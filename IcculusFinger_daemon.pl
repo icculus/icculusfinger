@@ -41,6 +41,7 @@
 #  2.1.0 : Added .planfile digest generation. Not hooked up to daemon yet,
 #          just works from the command line. (Thanks to Gary "Chunky Kibbles"
 #          Briggs for the suggestion and patches!)
+#  2.1.1 : Disabled the email URLizer for now. Added an "uptime" fakeuser.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -53,7 +54,7 @@ use DBI;             # or this. I guess. Maybe.
 use File::Basename;  # blow.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.0";
+my $version = "v2.1.1";
 
 
 #-----------------------------------------------------------------------------#
@@ -302,6 +303,12 @@ $fakeusers{'fortune'} = sub {
     return(`/usr/games/fortune`);
 };
 
+$fakeusers{'uptime'} = sub {
+    my $uptime = `/usr/bin/uptime`;
+    $uptime =~ s/\A.*?(up \d+ days, \d+:\d+),.*\Z/$1/;
+    return('[center]' . $uptime . '[/center]');
+};
+
 $fakeusers{'root'} = sub {
     return("ph34r me, for i am root. I'm l33t as kittens.");
 };
@@ -311,10 +318,10 @@ $fakeusers{'time'} = sub {
            "\012\012\012\012    ...[b][i][u]BEEP.[/u][/i][/b]");
 };
 
-$fakeusers{'admin-forcedigest'} = sub {
-    do_digest();
-    return('Digest dumped, nootch.');
-};
+#$fakeusers{'admin-forcedigest'} = sub {
+#    do_digest();
+#    return('Digest dumped, nootch.');
+#};
 
 
 # This works if run from qmail's tcp-env, and not tcpd.
@@ -913,7 +920,8 @@ sub do_fingering {
         1 while ($output_text =~ s/(?<!href=")(?<!src=")(?<!">)\b([a-zA-Z]+?:\/\/[-~=\w&\.\/?]+)/<a href="$1">$1<\/a>/);
 
         # try to make email addresses into hyperlinks in the HTML output.
-        1 while ($output_text =~ s/\b(?<!href="mailto:)(?<!">)\b([\w\.]+?\@[\w\.]+)(\b|\.)/<a href=\"mailto:$1\">$1<\/a>/);
+        # !!! FIXME: broken.
+        #1 while ($output_text =~ s/\b(?<!href="mailto:)(?<!">)\b(.+?\@.+?)(\b|\.)/<a href=\"mailto:$1\">$1<\/a>/);
 
         # HTMLify newlines.
         #1 while ($output_text =~ s/\r//s);
