@@ -37,6 +37,7 @@
 #          cleanups, and enables taint mode (-T). Input can now timeout, so
 #          connections can't be hogged indefinitely anymore.
 #  2.0.6 : Some syslogging added, minor fix in input reading.
+#          Zombie processes are cleaned up reliably, even under heavy load.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -971,6 +972,24 @@ sub signal_catcher {
 }
 
 
+my @kids;
+use POSIX ":sys_wait_h";
+sub reap_kids {
+    my $i = 0;
+    my $x = scalar(@kids);
+    while ($i < scalar(@kids)) {
+        my $rc = waitpid($kids[$i], &WNOHANG);
+        if ($rc != 0) {  # reaped a zombie.
+            splice(@kids, $i, 1); # take it out of the array.
+        } else {  # still alive, try next one.
+            $i++;
+        }
+    }
+
+    $SIG{CHLD} = \&reap_kids;  # make sure this works on crappy SysV systems.
+}
+
+
 # Mainline.
 
 if (defined $read_timeout) {
@@ -1004,8 +1023,7 @@ if (not $daemonize) {
     go_to_background();
 
     # reap zombies from client forks...
-    my $total_kids = 0;
-    $SIG{CHLD} = sub { wait(); $total_kids--; };
+    $SIG{CHLD} = \&reap_kids;
     $SIG{TERM} = \&signal_catcher;
     $SIG{INT} = \&signal_catcher;
 
@@ -1027,7 +1045,7 @@ if (not $daemonize) {
     while (1)
     {
         # prevent connection floods.
-        sleep(1) while ($total_kids >= $max_connects);
+        sleep(1) while (scalar(@kids) >= $max_connects);
 
         my $client = $listensock->accept();
         syslog_and_die("accept() failed: $!") if (not $client);
@@ -1042,7 +1060,7 @@ if (not $daemonize) {
 
         if ($kidpid) {  # this is the parent process.
             close($client);  # parent has no use for client socket.
-            $total_kids++;
+            push @kids, $kidpid;
         } else {
             close($listensock);   # child has no use for listen socket.
             local *FH = $client;
