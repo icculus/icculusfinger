@@ -72,8 +72,8 @@ my $safe_path = '/usr/bin:/usr/local/bin';
 
 # Turn the process into a daemon. This will handle creating/answering socket
 #  connections, and forking off children to handle them. This flag can be
-#  toggle via command line options (--daemonize, --no-daemonize, -d), but this
-#  sets the default. Daemonizing tends to speed up processing (since the
+#  toggled via command line options (--daemonize, --no-daemonize, -d), but
+#  this sets the default. Daemonizing tends to speed up processing (since the
 #  script stays loaded/compiled), but may cause problems on systems that
 #  don't have a functional fork() or IO::Socket::INET package. If you don't
 #  daemonize, this program reads requests from stdin and writes results to
@@ -86,8 +86,8 @@ my $daemonize = 0;
 my $server_port = 79;
 
 # Set this to immediately drop priveledges by setting uid and gid to these
-#  values. Set to undef to notattempt to drop privs. You will probably need to
-#  leave these as undef and run as root (risky!) if you plan to enable
+#  values. Set to undef to not attempt to drop privs. You will probably need
+#  to leave these as undef and run as root (risky!) if you plan to enable
 #  $the use_homedir variable, below.
 #my $wanted_uid = undef;
 #my $wanted_gid = undef;
@@ -109,7 +109,7 @@ my $max_connects = 10;
 #  before being booted and thus freeing their connection slot for the next
 #  guy in line. Setting this to undef lets people sit forever, but removes
 #  reliance on the IO::Select package. Note that this timeout is how long
-#  they user has to complete the read_request() function, so don't set it so
+#  the user has to complete the read_request() function, so don't set it so
 #  low that legitimate lag can kill them. The default is usually safe.
 my $read_timeout = 15;
 
