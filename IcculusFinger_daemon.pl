@@ -60,6 +60,8 @@
 #          moves across filesystems.
 #  2.1.9 : Security fixes in request parsing and syslog output by Chunky and
 #          Primer.
+#  2.1.10: Changes by Gary Briggs: Added local file parsing for specific
+#          situations, made image text more useful.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -153,6 +155,14 @@ my $use_syslog = 1;
 #  secure $fingerspace method, including creating the symlinks so your users
 #  won't really notice a difference.
 my $use_homedir = 0;
+
+# Set $files_allowed to allow someone to use a filename instead of a
+#  username. If you then ask for something of the form "./filename"
+#  it'll open the file instead of the user's .plan.
+# Without good reason the correct setting for this option is 0, and
+#  anything other than a specific file in the current dir will fail to
+#  work properly
+my $files_allowed = 0;
 
 # If you set $use_homedir to 0, this is the directory that contains the
 #  planfiles in the format "$fingerdir$username" Note that THIS MUST HAVE
@@ -833,8 +843,14 @@ sub load_archive {
 
 sub load_file {
     my $user = shift;
-    my $fname = ($use_homedir) ? "/home/$user/.plan" : "$fingerspace$user";
+    my $fname;
     my $errormsg = undef;
+
+	if($files_allowed==1 && $user =~ /^\.\/[^\/]*$/) {
+		$fname = $user;
+	} else {
+    	$fname = ($use_homedir) ? "/home/$user/.plan" : "$fingerspace/$user";
+	}
 
     if (not -f "$fname") {  # this is NOT an error.
         $output_text = "";
@@ -866,11 +882,13 @@ sub verify_and_load_request {
         $errormsg = "No user specified.";
     } elsif ($user =~ /\@/) {
         $errormsg = "Finger request forwarding is forbidden.";
-    } elsif (length($user) > 20 || $user =~ /[^A-Za-z0-9_]/) {
+    } elsif (length($user) > 20 ||
+			($user =~ /[^A-Za-z0-9_]/ && $files_allowed==0) ||
+			!($user =~ /\.\/[^\/]*/ && $files_allowed==1) ) {
         # The 20 char limit is just for safety against potential buffer overflows
         #  in finger servers, but it's more or less arbitrary.
         # Anything other than A-Za-z0-9_ is probably not a username.
-        $errormsg = "Bogus user specified.";
+        $errormsg = "Bogus user specified.\n";
     } else {
         if (defined $fakeusers{$user}) {
             $output_text = $fakeusers{$user}->();
@@ -1014,9 +1032,9 @@ sub do_fingering {
 
     # Change [img][/img] tags.
     if ($do_html_formatting) {
-        1 while ($output_text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/<img src=\"$1\" alt=\"$2\">/is);
+        1 while ($output_text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/<img src=\"$1\" alt=\"$2\" border=\"0\">/is);
     } else {
-        1 while ($output_text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/$2/is);
+        1 while ($output_text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/$2\n\[$1\]/is);
     }
 
     # Ditch [noarchive][/noarchive] tags ... those are metadata.
@@ -1132,8 +1150,12 @@ sub do_fingering {
         }
     }
 
-    1 while ($output_text =~ s/\A\n//s);  # Remove starting newlines.
-    1 while ($output_text =~ s/\n\Z//s);  # Remove trailing newlines.
+    1 while ($output_text =~ s/\A(\r\n)+//s);  # Remove starting newlines.
+    1 while ($output_text =~ s/(\r\n)+\Z//s);  # Remove trailing newlines.
+    1 while ($output_text =~ s/\A\n+//s);  # Remove starting newlines.
+    1 while ($output_text =~ s/\n+\Z//s);  # Remove trailing newlines.
+    1 while ($output_text =~ s/\A\r+//s);  # Remove starting newlines.
+    1 while ($output_text =~ s/\r+\Z//s);  # Remove trailing newlines.
 
     output_start($user, $host);
     print("$output_text\n");
@@ -1193,8 +1215,8 @@ sub finger_mainline {
                  die("Couldn't write to syslog: $!\n");
         }
 
-        my ($user, $args) = $query_string =~ /\A(.*?)(\?.*|\b)\Z/;
-        $user =~ tr/A-Z/a-z/ if defined $user;
+        my ($user, $args) = $query_string =~ /\A([^\?]*)(\?.*|\b)\Z/;
+        # $user =~ tr/A-Z/a-z/ if defined $user;
         $args = parse_args($args);
 
         if (verify_and_load_request($args, $user)) {
