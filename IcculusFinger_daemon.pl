@@ -28,6 +28,7 @@
 #          Added an "embed" arg.
 #          changed \r and \n in protocol chatter to \015 and \012.
 #          Made syslogging optional.
+#          Added "root" as a fakeuser.
 #-----------------------------------------------------------------------------
 
 # TODO: Let [img] tags nest inside [link] tags.
@@ -207,9 +208,10 @@ $fakeusers{'fortune'} = sub {
     return(`/usr/games/fortune`);
 };
 
-#$fakeusers{'test'} = sub {
-#    return("test THIS.");
-#};
+$fakeusers{'root'} = sub {
+    return("ph34r me, for i am root. I'm l33t as kittens.");
+};
+
 
 #-----------------------------------------------------------------------------#
 #     The rest is probably okay without you laying yer dirty mits on it.      #
