@@ -26,6 +26,8 @@
 #  2.0.1 : Fixed &gt; and &lt; conversion.
 #          MUCH better Lynx support (thanks, Chunky_Ks)
 #          Added an "embed" arg.
+#          changed \r and \n in protocol chatter to \015 and \012.
+#          Made syslogging optional.
 #-----------------------------------------------------------------------------
 
 # TODO: Let [img] tags nest inside [link] tags.
@@ -53,6 +55,10 @@ my $host = 'icculus.org';
 # This is the URL for fingering accounts, for when we need to generate
 #  URLs. "$url?user=$user&section=sectionname".
 my $base_url = 'http://icculus.org/cgi-bin/finger/finger.pl';
+
+# Set this to non-zero to log all finger requests via the standard Unix
+#  syslog facility (requires Sys::Syslog qw(:DEFAULT setlogsock) ...)
+my $use_syslog = 1;
 
 # Set $use_homedir to something nonzero if want to read planfiles from the
 #  standard Unix location ("/home/$user/.plan"). Note that this is a security
@@ -733,8 +739,8 @@ sub read_request {
 
     for ($count = 0; $count < $max_request_size; $count++) {
         $ch = getc(STDIN);
-        if ($ch ne "\r") {
-            last if (($ch eq '') or ($ch eq "\n"));
+	if ($ch ne "\015") {
+            last if (($ch eq '') or ($ch eq "\012"));
             $retval .= $ch;
         }
     }
@@ -747,11 +753,13 @@ sub read_request {
 
 my $query_string = read_request();
 
-use Sys::Syslog qw(:DEFAULT setlogsock);
-setlogsock("unix");
-openlog("fingerd", "user") or die("Couldn't open syslog: $!\n");
-syslog("info", "finger request: \"$query_string\"\n")
-    or die("Couldn't write to syslog: $!\n");
+if ($use_syslog) {
+    use Sys::Syslog qw(:DEFAULT setlogsock);
+    setlogsock("unix");
+    openlog("fingerd", "user") or die("Couldn't open syslog: $!\n");
+    syslog("info", "finger request: \"$query_string\"\n")
+	or die("Couldn't write to syslog: $!\n");
+}
 
 my ($user, $args) = $query_string =~ /\A(.*?)(\?.*|\b)\Z/;
 $user =~ tr/A-Z/a-z/ if defined $user;
