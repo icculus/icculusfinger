@@ -54,6 +54,8 @@
 #  2.1.5 : Fixes from Gary Briggs: Fixed a regexp, made line before ending
 #          text format better, fixed centering on Lynx.
 #  2.1.6 : Fix from Gary Briggs: undef'd variable reference.
+#  2.1.7 : Fix from Gary Briggs: do some text output for [i], [b], and [u]
+#          markup tags when not in HTML mode.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -66,7 +68,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.6";
+my $version = "v2.1.7";
 
 
 #-----------------------------------------------------------------------------#
@@ -358,7 +360,7 @@ $fakeusers{'root'} = sub {
 
 $fakeusers{'time'} = sub {
     return("At the sound of the beep, it will be: " . scalar localtime() .
-           "\012\012\012\012    ...[b][i][u]BEEP.[/u][/i][/b]");
+           "\012\012\012\012    ...[u][b][i]BEEP.[/i][/b][/u]");
 };
 
 #$fakeusers{'admin-forcedigest'} = sub {
@@ -969,21 +971,21 @@ sub do_fingering {
     if ($do_html_formatting) {
         1 while ($output_text =~ s/\[b](.*?)\[\/b\]/<b>$1<\/b>/is);
     } else {
-        1 while ($output_text =~ s/\[b](.*?)\[\/b\]/$1/is);
+        1 while ($output_text =~ s/\[b](.*?)\[\/b\]/\*$1\*/is);
     }
 
     # Change [i][/i] tags.
     if ($do_html_formatting) {
         1 while ($output_text =~ s/\[i](.*?)\[\/i\]/<i>$1<\/i>/is);
     } else {
-        1 while ($output_text =~ s/\[i](.*?)\[\/i\]/$1/is);
+        1 while ($output_text =~ s/\[i](.*?)\[\/i\]/\/$1\//is);
     }
 
     # Change [u][/u] tags.
     if ($do_html_formatting) {
         1 while ($output_text =~ s/\[u](.*?)\[\/u\]/<u>$1<\/u>/is);
     } else {
-        1 while ($output_text =~ s/\[u](.*?)\[\/u\]/$1/is);
+        1 while ($output_text =~ s/\[u](.*?)\[\/u\]/_$1_/is);
     }
 
     # Change [font][/font] tags.
