@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/perl -w -T
 #-----------------------------------------------------------------------------
 #
 #  Copyright (C) 2002 Ryan C. Gordon (icculus@icculus.org)
@@ -33,6 +33,8 @@
 #  2.0.3 : Added "linkdigest" arg, and made it the default for text output.
 #  2.0.4 : Added "noarchive" tagblocks and optional "plan written on"
 #          date/time output.
+#  2.0.5 : Can now run as a full daemon, without inetd. Bunch of secutity
+#          cleanups, and enables taint mode (-T).
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -44,7 +46,7 @@ use warnings;  # don't touch this line, either.
 use DBI;       # or this. I guess. Maybe.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.0.4";
+my $version = "v2.0.5";
 
 
 #-----------------------------------------------------------------------------#
@@ -60,6 +62,38 @@ my $host = 'icculus.org';
 # This is the URL for fingering accounts, for when we need to generate
 #  URLs. "$url?user=$user&section=sectionname".
 my $base_url = 'http://icculus.org/cgi-bin/finger/finger.pl';
+
+# Turn the process into a daemon. This will handle creating/answering socket
+#  connections, and forking off children to handle them. This flag can be
+#  toggle via command line options (--daemonize, --no-daemonize, -d), but this
+#  sets the default. Daemonizing tends to speed up processing (since the
+#  script stays loaded/compiled), but may cause problems on systems that
+#  don't have a functional fork() or IO::Socket::INET package. If you don't
+#  daemonize, this program reads requests from stdin and writes results to
+#  stdout, which makes it suitable for command line use or execution from
+#  inetd and equivalents.
+my $daemonize = 0;
+
+# This is only used when daemonized. Specify the port on which to listen for
+#  incoming connections. The RFC standard finger port is 79.
+my $server_port = 79;
+
+# Set this to immediately drop priveledges by setting uid and gid to these
+#  values. Set to undef to notattempt to drop privs. You will probably need to
+#  leave these as undef and run as root (risky!) if you plan to enable
+#  $the use_homedir variable, below.
+#my $wanted_uid = undef;
+#my $wanted_gid = undef;
+my $wanted_uid = 1056;  # (This is the uid of "finger" ON _MY_ SYSTEM.)
+my $wanted_gid = 971;   # (This is the gid of "iccfinger" ON _MY_ SYSTEM.)
+
+# This is only used when daemonized. Specify the maximum number of finger
+#  requests to service at once. A separate child process is fork()ed off for
+#  each request, and if there are more requests then this value, the extra
+#  clients will be made to wait until some of the current requests are
+#  serviced. 5 to 10 is usually a good number. Set it higher if you get a
+#  massive amount of finger requests simultaneously.
+my $max_connects = 5;
 
 # Set this to non-zero to log all finger requests via the standard Unix
 #  syslog facility (requires Sys::Syslog qw(:DEFAULT setlogsock) ...)
@@ -230,11 +264,13 @@ $fakeusers{'time'} = sub {
 #  also note that this is pretty useless for hits through the web
 #  interface, since the webserver's IP will be reported, not the
 #  browser's IP.
-if (defined $ENV{'TCPREMOTEIP'}) {
-    $fakeusers{'ipaddr'} = sub {
+$fakeusers{'ipaddr'} = sub {
+    if (defined $ENV{'TCPREMOTEIP'}) {
         return("Your IP address appears to be $ENV{'TCPREMOTEIP'}");
-    };
-}
+    } else {
+        return(undef);
+    }
+};
 
 #-----------------------------------------------------------------------------#
 #     The rest is probably okay without you laying yer dirty mits on it.      #
@@ -834,27 +870,123 @@ sub read_request {
 }
 
 
+sub finger_mainline {
+    my $query_string = read_request();
+
+    if ($use_syslog) {
+        syslog("info", "finger request: \"$query_string\"\n")
+            or die("Couldn't write to syslog: $!\n");
+    }
+
+    my ($user, $args) = $query_string =~ /\A(.*?)(\?.*|\b)\Z/;
+    $user =~ tr/A-Z/a-z/ if defined $user;
+    $args = parse_args($args);
+
+    if (verify_and_load_request($args, $user)) {
+        do_fingering($query_string, $user)
+    }
+
+    return(0);
+}
+
+
+sub syslog_and_die {
+    my $err = shift;
+    $err .= "\n";
+    syslog("info", $err) if ($use_syslog);
+    die($err);
+}
+
+
+sub go_to_background {
+    use POSIX 'setsid';
+    chdir('/') or syslog_and_die("Can't chdir to '/': $!");
+    open STDIN,'/dev/null' or syslog_and_die("Can't read '/dev/null': $!");
+    open STDOUT,'>/dev/null' or syslog_and_die("Can't write '/dev/null': $!");
+    defined(my $pid=fork) or syslog_and_die("Can't fork: $!");
+    exit if $pid;
+    setsid or syslog_and_die("Can't start new session: $!");
+    open STDERR,'>&STDOUT' or syslog_and_die("Can't duplicate stdout: $!");
+}
+
+
+sub drop_privileges {
+    delete @ENV{qw(IFS CDPATH ENV BASH_ENV)};
+    $ENV{'PATH'} = '/usr/bin:/usr/local/bin';
+    $) = $wanted_gid if (defined $wanted_gid);
+    $> = $wanted_uid if (defined $wanted_uid);
+}
+
+
 # Mainline.
 
-my $query_string = read_request();
+foreach (@ARGV) {
+    $daemonize = 1, next if $_ eq '--daemonize';
+    $daemonize = 1, next if $_ eq '-d';
+    $daemonize = 0, next if $_ eq '--no-daemonize';
+    die("Unknown command line \"$_\".\n");
+}
+
 
 if ($use_syslog) {
     use Sys::Syslog qw(:DEFAULT setlogsock);
     setlogsock("unix");
     openlog("fingerd", "user") or die("Couldn't open syslog: $!\n");
-    syslog("info", "finger request: \"$query_string\"\n")
-        or die("Couldn't write to syslog: $!\n");
 }
 
-my ($user, $args) = $query_string =~ /\A(.*?)(\?.*|\b)\Z/;
-$user =~ tr/A-Z/a-z/ if defined $user;
-$args = parse_args($args);
 
-if (verify_and_load_request($args, $user)) {
-    do_fingering($query_string, $user)
+my $retval = 0;
+if (not $daemonize) {
+    drop_privileges();
+    $retval = finger_mainline();
+} else {
+    go_to_background();
+
+    # clean up zombies from future forks...
+    use POSIX ":sys_wait_h";
+    $SIG{CHLD} = sub { 1 until (waitpid(-1, WNOHANG) == -1); };
+
+    use IO::Socket::INET;
+    my $listensock = IO::Socket::INET->new(LocalPort => $server_port,
+                                           Type => SOCK_STREAM,
+                                           ReuseAddr => 1,
+                                           Listen => $max_connects);
+
+    syslog_and_die("couldn't create listen socket: $!") if (not $listensock);
+
+    drop_privileges();
+
+    while (1)
+    {
+        my $client = $listensock->accept();
+        syslog_and_die("accept() failed: $!") if (not $client);
+
+        my $ip = $client->peerhost();
+        syslog("info", "connection from $ip") if ($use_syslog);
+
+        $ENV{'TCPREMOTEIP'} = $ip;
+
+        my $kidpid = fork();
+        syslog_and_die("fork() failed: $!") if (not defined $kidpid);
+
+        if ($kidpid == 0) {  # this is the child process.
+            close($listensock);   # no need for listen socket in child.
+            local *FH = $client;
+            open(STDIN, "<&FH") or syslog_and_die("no STDIN reassign: $!");
+            open(STDERR, ">&FH") or syslog_and_die("no STDERR reassign: $!");
+            open(STDOUT, ">&FH") or syslog_and_die("no STDOUT reassign: $!");
+            my $retval = finger_mainline();
+            close($client);
+            exit $retval;
+        }
+
+        close($client);  # parent has no use for this socket.
+    }
+
+    close($listensock);  # probably won't ever hit this.
 }
 
-exit 0;
+exit $retval;
 
 # end of finger.pl ...
 
