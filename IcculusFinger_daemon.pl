@@ -30,6 +30,7 @@
 #          Made syslogging optional.
 #          Added "root" as a fakeuser.
 #  2.0.2 : Added "time" and "ipaddr" fakeusers.
+#  2.0.3 : Added "linkdigest" arg, and made it the default for text output.
 #-----------------------------------------------------------------------------
 
 # TODO: Let [img] tags nest inside [link] tags.
@@ -41,7 +42,7 @@ use warnings;  # don't touch this line, either.
 use DBI;       # or this. I guess. Maybe.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.0.2";
+my $version = "v2.0.3";
 
 
 #-----------------------------------------------------------------------------#
@@ -220,7 +221,7 @@ $fakeusers{'time'} = sub {
 
 
 # This works if run from qmail's tcp-env, and not tcpd.
-#  also note that this is pretty useless for hits through the web 
+#  also note that this is pretty useless for hits through the web
 #  interface, since the webserver's IP will be reported, not the
 #  browser's IP.
 if (defined $ENV{'TCPREMOTEIP'}) {
@@ -243,6 +244,7 @@ my $archive_time = undef;
 my $list_sections = 0;
 my $list_archives = 0;
 my $embed = 0;
+my $do_link_digest = undef;
 
 my $did_output_start = 0;
 sub output_start {
@@ -306,49 +308,57 @@ __EOF__
 
 sub parse_args {
     my $args = shift;
-    return if ((not defined $args) or ($args eq ""));
-    $args =~ s/\A\?//;
+    if ((defined $args) and ($args ne '')) {
+        $args =~ s/\A\?//;
 
-    if ($args =~ s/(\A|&)web=(.*?)(&|\Z)/$1/) {
-        $is_web_interface = $2;
+        if ($args =~ s/(\A|&)web=(.*?)(&|\Z)/$1/) {
+            $is_web_interface = $2;
+        }
+
+        if ($args =~ s/(\A|&)html=(.*?)(&|\Z)/$1/) {
+            $do_html_formatting = $2;
+        }
+
+        if ($args =~ s/(\A|&)browser=(.*?)(&|\Z)/$1/) {
+            $browser = $2;
+        }
+
+        if ($args =~ s/(\A|&)debug=(.*?)(&|\Z)/$1/) {
+            $debug = $2;
+        }
+
+        if ($args =~ s/(\A|&)section=(.*?)(&|\Z)/$1/) {
+            $wanted_section = $2;
+            $wanted_section =~ tr/A-Z/a-z/;
+        }
+
+        if ($args =~ s/(\A|&)date=(.*?)(&|\Z)/$1/) {
+            $archive_date = $2;
+        }
+
+        if ($args =~ s/(\A|&)time=(.*?)(&|\Z)/$1/) {
+            $archive_time = $2;
+        }
+
+        if ($args =~ s/(\A|&)listsections=(.*?)(&|\Z)/$1/) {
+            $list_sections = $2;
+        }
+
+        if ($args =~ s/(\A|&)listarchives=(.*?)(&|\Z)/$1/) {
+            $list_archives = $2;
+        }
+
+        if ($args =~ s/(\A|&)embed=(.*?)(&|\Z)/$1/) {
+            $embed = $2;
+        }
+
+        if ($args =~ s/(\A|&)linkdigest=(.*?)(&|\Z)/$1/) {
+            $do_link_digest = $2;
+        }
     }
 
-    if ($args =~ s/(\A|&)html=(.*?)(&|\Z)/$1/) {
-        $do_html_formatting = $2;
-    }
-
-    if ($args =~ s/(\A|&)browser=(.*?)(&|\Z)/$1/) {
-        $browser = $2;
-    }
-
-    if ($args =~ s/(\A|&)debug=(.*?)(&|\Z)/$1/) {
-        $debug = $2;
-    }
-
-    if ($args =~ s/(\A|&)section=(.*?)(&|\Z)/$1/) {
-        $wanted_section = $2;
-        $wanted_section =~ tr/A-Z/a-z/;
-    }
-
-    if ($args =~ s/(\A|&)date=(.*?)(&|\Z)/$1/) {
-        $archive_date = $2;
-    }
-
-    if ($args =~ s/(\A|&)time=(.*?)(&|\Z)/$1/) {
-        $archive_time = $2;
-    }
-
-    if ($args =~ s/(\A|&)listsections=(.*?)(&|\Z)/$1/) {
-        $list_sections = $2;
-    }
-
-    if ($args =~ s/(\A|&)listarchives=(.*?)(&|\Z)/$1/) {
-        $list_archives = $2;
-    }
-
-    if ($args =~ s/(\A|&)embed=(.*?)(&|\Z)/$1/) {
-        $embed = $2;
-    }
+    # default behaviours that depend on output target...
+    $do_link_digest = !$do_html_formatting if (not defined $do_link_digest);
 
     return($args);
 }
@@ -542,6 +552,7 @@ sub verify_and_load_request {
 
 sub do_fingering {
     my ($query_string, $user) = @_;
+    my @link_digest;
 
     if ($debug) {
         $title = "debugging...";
@@ -552,6 +563,8 @@ sub do_fingering {
         print("HTML formatting: $do_html_formatting ...\n");
         print("Is web interface: $is_web_interface ...\n");
         print("Browser: $browser ...\n");
+        print("Embedding: $embed ...\n");
+        print("Doing link digest: $do_link_digest ...\n");
     }
 
     if ((not defined $output_text) or ($output_text eq "")) {
@@ -665,7 +678,13 @@ sub do_fingering {
     # Change [link][/link] tags.
     if ($do_html_formatting) {
         1 while ($output_text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/<a href=\"$1\">$2<\/a>/is);
-    } else {
+    } elsif ($do_link_digest) {
+        my $x = $#link_digest + 2;  # start at one.
+        while ($output_text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/$2 \[$x\]/is) {
+            push @link_digest, $1;
+            $x++;
+        }
+    } else {  # ugly-ass text output.
         1 while ($output_text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/$2 \[$1\]/is);
     }
 
@@ -730,6 +749,9 @@ sub do_fingering {
         }
         print("Chosen: [$wittyremark].\n");
 
+        $x = $#link_digest + 1;
+        print("Items in link digest: $x ... \n");
+
         print("\n");
         print("Actual finger output begins below line...\n");
         print("---------------------------------------------------\n");
@@ -737,6 +759,16 @@ sub do_fingering {
 
     if ((not $do_html_formatting) and (not $is_web_interface)) {
         $output_text = "$title\n\n" . $output_text;
+    }
+
+    if (($do_link_digest) and ($#link_digest >= 0)) {
+        $output_text .= "\n\n";
+
+        my $idx = 0;
+        foreach (@link_digest) {
+            $idx++;  # start at one.
+            $output_text .= "     [$idx] $_\n";
+        }
     }
 
     1 while ($output_text =~ s/\A\n//s);  # Remove starting newlines.
