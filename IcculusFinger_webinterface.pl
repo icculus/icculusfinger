@@ -1,8 +1,31 @@
 #!/usr/bin/perl -w
+#-----------------------------------------------------------------------------
+#
+#  Copyright (C) 2000 Ryan C. Gordon (icculus@icculus.org)
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+#
+#-----------------------------------------------------------------------------
 
 use strict;
 use warnings;
 use IO::Socket;
+
+#-----------------------------------------------------------------------------#
+#             CONFIGURATION VARIABLES: Change to suit your needs...           #
+#-----------------------------------------------------------------------------#
 
 # Define which host(s) the finger request goes to. If $host == false,
 #  then users may finger any system on the Internet by specifying a hostname:
@@ -11,7 +34,6 @@ use IO::Socket;
 #my $host = undef;    # Makes this script work as a web interface to finger.
 #my $host = "icculus.org";  # limit queries to users @icculus.org
 my $host = $ENV{SERVER_NAME};  # This is good for VirtualHost setups.
-
 
 #-----------------------------------------------------------------------------#
 #     The rest is probably okay without you laying yer dirty mits on it.      #

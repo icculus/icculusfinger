@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 #-----------------------------------------------------------------------------
 #
-#  Copyright (C) 2000 Ryan C. Gordon (icculus@icculus.org)
+#  Copyright (C) 2002 Ryan C. Gordon (icculus@icculus.org)
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
