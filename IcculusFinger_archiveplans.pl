@@ -36,7 +36,8 @@ my $debug = 0;
 #  This prevents archiving of a file that is in the middle of being edited.
 my $update_delay = 60 * 24;  # 24 hours old.
 
-my $plandir = '/fingerspace';
+my $use_homedir = 0;
+my $fingerspace = '/fingerspace';
 
 my $dbhost = 'localhost';
 my $dbuser = 'fingermgr';
@@ -124,11 +125,26 @@ sub run_external_updater {
 }
 
 
-sub get_planfiles {
-    my $dirname = shift;
-    opendir(DIRH, $dirname) or die ("Failed to enumerate planfiles: $!\n");
-    my @retval = readdir(DIRH) or die ("Failed to enumerate planfiles: $!\n");
+sub enumerate_planfiles {
+    my $dirname = (($use_homedir) ? '/home' : $fingerspace);
+    opendir(DIRH, $dirname) or return(undef);
+    my @dirents = readdir(DIRH);
     closedir(DIRH);
+
+    my @retval;
+
+    if ($use_homedir) {
+        foreach (@dirents) {
+            next if (($_ eq '.') or ($_ eq '..'));
+            push @retval, "/home/$_/.plan";
+        }
+    } else {
+        foreach (@dirents) {
+            next if (($_ eq '.') or ($_ eq '..'));
+            push @retval, "$fingerspace/$_";
+        }
+    }
+
     return(@retval);
 }
 
@@ -179,11 +195,17 @@ sub update_planfile {
         return;
     }
 
-    my $user = basename($filename);
     my $modtime = (stat($filename))[9];
     my $fdate = get_sqldate($modtime);
     my $sql = '';
     my $plantext = undef;
+
+    my $user = $filename;
+    if ($use_homedir) {
+        $user =~ s#\A/home/(.*?)/\.plan\Z#$1#;
+    } else {
+        $user = basename($filename);
+    }
 
     if ((defined $force_archive) and ($force_archive eq $user)) {
         print(" * Forcing archival of $user\'s .planfile...\n") if $debug;
@@ -273,7 +295,8 @@ for (my $i = 0; $i < scalar(@ARGV); $i++) {
     print("Unknown argument \"$arg\".\n");
 }
 
-my @planfiles = get_planfiles($plandir);
+my @planfiles = enumerate_planfiles();
+die("Failed to enumerate planfiles: $!\n") if not @planfiles;
 
 if (not defined $dbpass) {
     if (defined $dbpassfile) {
@@ -303,7 +326,7 @@ print(" * Connecting to [$dsn] ...\n") if $debug;
 my $link = DBI->connect($dsn, $dbuser, $dbpass, {'RaiseError' => 1});
 
 foreach (@planfiles) {
-    update_planfile($link, "$plandir/$_");
+    update_planfile($link, "$_");
 }
 
 $link->disconnect();
