@@ -23,6 +23,8 @@
 # Revision history:
 #  (1.0 series comments removed. Check the download archives if you need them.)
 #  2.0.0 : Rewrite into an actual finger daemon. MILLIONS of changes.
+#  2.0.1 : Fixed &gt; and &lt; conversion.
+#          MUCH better Lynx support (thanks, Chunky_Ks)
 #-----------------------------------------------------------------------------
 
 # TODO: Let [img] tags nest inside [link] tags.
@@ -236,15 +238,14 @@ sub output_start {
    <hr>
 
 
-    <pre>
-
 __EOF__
+    print "\n<pre>\n" if ($browser !~ /Lynx/);
 }
 
 
 sub output_ending {
 
-    if (($is_web_interface) or ($do_html_formatting)) {
+    if (($is_web_interface) or ($do_html_formatting) and ($browser !~ /Lynx/)) {
         print("    </pre>\n");
     }
 
@@ -315,11 +316,6 @@ sub parse_args {
 
     if ($args =~ s/(\A|&)listarchives=(.*?)(&|\Z)/$1/) {
         $list_archives = $2;
-    }
-
-    # !!! FIXME: This is a pretty lame solution.
-    if ($browser =~ /Lynx/) {
-        $do_html_formatting = 0;
     }
 
     return($args);
@@ -665,7 +661,14 @@ sub do_fingering {
     # this has to be done after any possible URL detection...
     #   convert ampersands for the browser.
     if (($do_html_formatting) or ($is_web_interface)) {
-        1 while ($output_text =~ s/(?<!">)\&(?!amp)/&amp;/s);
+        1 while ($output_text =~ s/(?<!">)\&(?!lt)(?!gt)(?!amp)/&amp;/s);
+    }
+
+    if ($do_html_formatting and ($browser =~ /Lynx/)) {
+	# !!! FIXME: executable regexp suck.
+	1 while ($output_text =~ s/^( +)/"&nbsp;" x length($1)/mse);
+        1 while ($output_text =~ s/\r//s);
+        1 while ($output_text =~ s/\n/<br>/s);
     }
 
     if ($#title_array >= 0) {
