@@ -58,6 +58,8 @@
 #          markup tags when not in HTML mode.
 #  2.1.8 : Fix from Gary Briggs: IcculusFinger_planmove.pl now handles
 #          moves across filesystems.
+#  2.1.9 : Security fixes in request parsing and syslog output by Chunky and
+#          Primer.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -70,7 +72,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.8";
+my $version = "v2.1.9";
 
 
 #-----------------------------------------------------------------------------#
@@ -864,10 +866,10 @@ sub verify_and_load_request {
         $errormsg = "No user specified.";
     } elsif ($user =~ /\@/) {
         $errormsg = "Finger request forwarding is forbidden.";
-    } elsif (length($user) > 20) {
+    } elsif (length($user) > 20 || $user =~ /[^A-Za-z0-9_]/) {
         # The 20 char limit is just for safety against potential buffer overflows
         #  in finger servers, but it's more or less arbitrary.
-        # !!! TODO FIXME: Check for bogus characters in username/host.
+        # Anything other than A-Za-z0-9_ is probably not a username.
         $errormsg = "Bogus user specified.";
     } else {
         if (defined $fakeusers{$user}) {
@@ -1185,6 +1187,7 @@ sub finger_mainline {
         syslog("info", $syslog_text) if ($use_syslog);
     } else {
         $syslog_text = "finger request: \"$query_string\"\n";
+        $syslog_text =~ s/%/%%/g;
         if ($use_syslog) {
             syslog("info", $syslog_text) or
                  die("Couldn't write to syslog: $!\n");
@@ -1206,6 +1209,7 @@ sub finger_mainline {
 sub syslog_and_die {
     my $err = shift;
     $err .= "\n";
+    $err =~ s/%/%%/g;
     syslog("info", $err) if ($use_syslog);
     die($err);
 }
