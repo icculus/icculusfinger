@@ -34,7 +34,7 @@ my $debug = 0;
 
 # File must have not been touch within this many minutes to be archived.
 #  This prevents archiving of a file that is in the middle of being edited.
-my $update_delay = 30;
+my $update_delay = 60 * 24;  # 24 hours old.
 
 my $plandir = '/fingerspace';
 
