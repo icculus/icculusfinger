@@ -36,6 +36,7 @@
 #  2.0.5 : Can now run as a full daemon, without inetd. Bunch of secutity
 #          cleanups, and enables taint mode (-T). Input can now timeout, so
 #          connections can't be hogged indefinitely anymore.
+#  2.0.6 : Some syslogging added, minor fix in input reading.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -47,7 +48,7 @@ use warnings;    # don't touch this line, either.
 use DBI;         # or this. I guess. Maybe.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.0.5";
+my $version = "v2.0.6";
 
 
 #-----------------------------------------------------------------------------#
@@ -895,7 +896,7 @@ sub read_request {
         my $rc = sysread(STDIN, $ch, 1);
         return undef if ($rc != 1);
         if ($ch ne "\015") {
-            return($retval) if (($ch eq '') or ($ch eq "\012"));
+            return($retval) if ($ch eq "\012");
             $retval .= $ch;
             $count++;
             return($retval) if ($count >= $max_request_size);
@@ -951,6 +952,7 @@ sub go_to_background {
     exit if $pid;
     setsid or syslog_and_die("Can't start new session: $!");
     open STDERR,'>&STDOUT' or syslog_and_die("Can't duplicate stdout: $!");
+    syslog("info", "Daemon process is now detached") if ($use_syslog);
 }
 
 
@@ -959,6 +961,13 @@ sub drop_privileges {
     $ENV{'PATH'} = $safe_path;
     $) = $wanted_gid if (defined $wanted_gid);
     $> = $wanted_uid if (defined $wanted_uid);
+}
+
+
+sub signal_catcher {
+    my $sig = shift;
+    syslog("info", "Got signal $sig. Shutting down.") if ($use_syslog);
+    exit 0;
 }
 
 
@@ -988,11 +997,17 @@ if (not $daemonize) {
     drop_privileges();
     $retval = finger_mainline();
 } else {
+    if ($use_syslog) {
+        syslog("info", "IcculusFinger daemon $version starting up...");
+    }
+
     go_to_background();
 
     # reap zombies from client forks...
     my $total_kids = 0;
     $SIG{CHLD} = sub { wait(); $total_kids--; };
+    $SIG{TERM} = \&signal_catcher;
+    $SIG{INT} = \&signal_catcher;
 
     use IO::Socket::INET;
     my $listensock = IO::Socket::INET->new(LocalPort => $server_port,
@@ -1003,6 +1018,11 @@ if (not $daemonize) {
     syslog_and_die("couldn't create listen socket: $!") if (not $listensock);
 
     drop_privileges();
+
+    if ($use_syslog) {
+        syslog("info", "Now accepting connections (max $max_connects" .
+                       " simultaneous on port $server_port).");
+    }
 
     while (1)
     {
