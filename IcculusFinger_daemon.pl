@@ -50,6 +50,7 @@
 #          times.
 #  2.1.4 : Moved plan digest hashing to separate function (hashplans()),
 #          added RSS digest (thanks, zakk!), and unified them in do_digests().
+#          Digests can have a maximum user output now.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -278,6 +279,12 @@ my $dbtable_archive = 'finger_archive';
 #  a cronjob.
 my $digest_frequency = 10;
 
+# Digests (html and rss) will show at most $digest_max_users plans, newest
+#  listed first. Five to ten is probably a good idea. undef to list all
+#  non-empty .planfiles.
+#my $digest_max_users = undef;
+my $digest_max_users = 10;
+
 # Filename to write finger digest to. "undef" will universally disable digest
 #  generation, from the daemon or command line. Note that this file is opened
 #  for writing _AFTER_ the program drops privileges, whether you run this from
@@ -495,6 +502,7 @@ sub do_digest {
 
     print DIGESTH "<table border=0>\n";
 
+    my $x = 0;
     foreach (reverse sort keys %plansdates) {
         my $user = $plansdates{$_};
         my $modtime = get_minimal_sqldate($_);
@@ -503,6 +511,8 @@ sub do_digest {
         print DIGESTH "  <td align=\"right\"><a $href>$user</a></td>\n";
         print DIGESTH "  <td>$modtime</td>\n";
         print DIGESTH " </tr>\n";
+
+        last if ((defined $digest_max_users) and (++$x >= $digest_max_users));
     }
 
     print DIGESTH "  </table>\n</p>\n";
@@ -544,6 +554,7 @@ sub do_rss_digest {
 
 __EOF__
 
+    my $x = 0;
     foreach (reverse sort keys %plansdates) {
         my $user = $plansdates{$_};
         my $modtime = get_minimal_sqldate($_);
@@ -552,6 +563,8 @@ __EOF__
         print RSS_DIGESTH "    <title>$user - $modtime</title>\n";
         print RSS_DIGESTH "    <link>$href</link>\n";
         print RSS_DIGESTH "  </item>\n\n";
+
+        last if ((defined $digest_max_users) and (++$x >= $digest_max_users));
     }
 
     print RSS_DIGESTH "</rdf:RDF>\n\n";
