@@ -53,6 +53,7 @@
 #          Digests can have a maximum user output now.
 #  2.1.5 : Fixes from Gary Briggs: Fixed a regexp, made line before ending
 #          text format better, fixed centering on Lynx.
+#  2.1.6 : Fix from Gary Briggs: undef'd variable reference.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -65,7 +66,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.5";
+my $version = "v2.1.6";
 
 
 #-----------------------------------------------------------------------------#
@@ -627,6 +628,7 @@ sub output_ending {
 __EOF__
 
     } else {
+	$revision = ((defined $revision) ? "$revision\n" : '');
 	# Perl has no builtin max
 	my $maxlength = length($revision);
 	$maxlength = length($text_credits) if(length($text_credits)>$maxlength);
@@ -1036,15 +1038,15 @@ sub do_fingering {
     if ($do_html_formatting and ($browser =~ /Lynx/)) {
         #1 while ($output_text =~ s/^( +)/"&nbsp;" x length($1)/mse);
 
-	# The other choice being to split this puppy into two around
-	#  the spaces, and gaffer them back together with
-	#  $output_string = $1.length($2)x"&nbsp;".$3
-	#  But that's not the perl way.
+        # The other choice being to split this puppy into two around
+        #  the spaces, and gaffer them back together with
+        #  $output_string = $1.length($2)x"&nbsp;".$3
+        #  But that's not the perl way.
 
-	1 while ($output_text =~ s/^ /\&nbsp;/ms);
-	1 while ($output_text =~ s/^(\&nbsp;)+ /$1\&nbsp;/ms);
+        1 while ($output_text =~ s/^ /\&nbsp;/ms);
+        1 while ($output_text =~ s/^(\&nbsp;)+ /$1\&nbsp;/ms);
 
-	# Don't forget some people still use macs.
+        # Don't forget some people still use macs.
         1 while ($output_text =~ s/\r\n/<br>/s);
         1 while ($output_text =~ s/\r/<br>/s);
         1 while ($output_text =~ s/\n/<br>/s);
