@@ -34,7 +34,8 @@
 #  2.0.4 : Added "noarchive" tagblocks and optional "plan written on"
 #          date/time output.
 #  2.0.5 : Can now run as a full daemon, without inetd. Bunch of secutity
-#          cleanups, and enables taint mode (-T).
+#          cleanups, and enables taint mode (-T). Input can now timeout, so
+#          connections can't be hogged indefinitely anymore.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
