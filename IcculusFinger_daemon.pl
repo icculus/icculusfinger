@@ -46,6 +46,10 @@
 #          sorted correctly. (Thanks, Gary!) Daemon now select()s on the
 #          listen socket so it can timeout and do the .planfile digest. Other
 #          cleanups and fixes in the daemon code.
+#  2.1.3 : Make sure .plan digest doesn't skips users with identical update
+#          times.
+#  2.1.4 : Moved plan digest hashing to separate function (hashplans()),
+#          added RSS digest (thanks, zakk!), and unified them in do_digests().
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -59,7 +63,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.2";
+my $version = "v2.1.4";
 
 
 #-----------------------------------------------------------------------------#
@@ -280,12 +284,35 @@ my $digest_frequency = 10;
 #  the command line or as a daemon.
 my $digest_filename = '/webspace/icculus.org/fingerdigest.html';
 
+# Filename to write finger digest RSS to, "undef" will universally
+# disable RSS digest generation, from the daemon or the command line. See
+# other notes above.
+my $digest_rss_filename = '/webspace/icculus.org/fingerdigest.rss';
+
 # Set this to a string you want to prepend to the finger digest. If you
 #  aren't planning to include the digest in another webpage via PHP or
 #  whatnot, you should put <html> and <title> tags, etc here. "undef" is
 #  safe, too.
 #my $digest_prepend = undef;
 my $digest_prepend = "<html><head><title>.plan digest</title></head><body>\n";
+
+# Set this to a url you want to set the about to
+# for the finger digest RSS about field. Et cetera.
+my $digest_rss_about = "http://icculus.org/fingerdigest.rdf";
+
+# Set this to a title you want for the RSS
+my $digest_rss_title = "icculus.org finger digest";
+
+# Set this to the link you want for the finger digest (note that this
+# relates to the RSS file linking to the actual piece of html, not
+# itself)
+my $digest_rss_url = "http://icculus.org/fingerdigest.html";
+
+# Set this to the description for the RSS
+my $digest_rss_desc = "finger updates from icculus.org users";
+
+# Set this to the url for the RSS image
+my $digest_rss_image = "http://icculus.org/icculus-org-now.png";
 
 # Set this to a string you want to append to the finger digest. If you
 #  aren't planning to include the digest in another webpage via PHP or
@@ -326,7 +353,7 @@ $fakeusers{'time'} = sub {
 };
 
 #$fakeusers{'admin-forcedigest'} = sub {
-#    do_digest();
+#    do_digests();
 #    return('Digest dumped, nootch.');
 #};
 
@@ -418,28 +445,14 @@ sub enumerate_planfiles {
 }
 
 
-sub do_digest {
-    return if not defined $digest_filename;
+sub hashplans {
+    my %retval;
 
     my @plans = enumerate_planfiles();
     if (not @plans) {
         syslog("info", "Failed to enumerate planfiles: $!\n") if ($use_syslog);
-        return;
+        return(undef);
     }
-
-    if (not open DIGESTH, '>', $digest_filename) {
-        if ($use_syslog) {
-            syslog("info", "digest: failed to open $digest_filename: $!\n");
-        }
-        return;
-    }
-
-    print DIGESTH $digest_prepend if defined $digest_prepend;
-    print DIGESTH "\n<p>\n ";
-
-    print DIGESTH "<table border=0>\n";
-
-    my %plansdates;
 
     foreach (@plans) {
         my $user = $_;
@@ -455,10 +468,34 @@ sub do_digest {
 
         # construct the hash backward for easy
         #    sorting-by-time in the next loop
-        $plansdates{$statbuf[9]} = $user;
+        my $t = $statbuf[9];
+        $t++ while defined $retval{$t};
+        $retval{$t} = $user;
     }
 
-    foreach ( reverse sort keys %plansdates) {
+    return(%retval);
+}
+
+
+sub do_digest {
+    return if not defined $digest_filename;
+
+    my %plansdates = hashplans();
+    return if (not %plansdates);
+
+    if (not open DIGESTH, '>', $digest_filename) {
+        if ($use_syslog) {
+            syslog("info", "digest: failed to open $digest_filename: $!\n");
+        }
+        return;
+    }
+
+    print DIGESTH $digest_prepend if defined $digest_prepend;
+    print DIGESTH "\n<p>\n ";
+
+    print DIGESTH "<table border=0>\n";
+
+    foreach (reverse sort keys %plansdates) {
         my $user = $plansdates{$_};
         my $modtime = get_minimal_sqldate($_);
         my $href = "href=\"$base_url?user=$user\"";
@@ -471,6 +508,54 @@ sub do_digest {
     print DIGESTH "  </table>\n</p>\n";
     print DIGESTH $digest_append if defined $digest_append;
     close(DIGESTH);
+}
+
+
+sub do_rss_digest {
+    return if not defined $digest_rss_filename;
+
+    my %plansdates = hashplans();
+    return if (not %plansdates);
+
+    if (not open RSS_DIGESTH, '>', $digest_rss_filename) {
+        if ($use_syslog) {
+            syslog("info", "digest: failed to open $digest_rss_filename: $!\n");
+        }
+        return;
+    }
+
+    print RSS_DIGESTH <<__EOF__;
+
+<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns="http://purl.org/rss/1.0/">
+
+  <channel rdf:about="$digest_rss_about">
+    <title>$digest_rss_title</title>
+    <link>$digest_rss_url</link>
+    <description>$digest_rss_desc</description>
+  </channel>
+
+  <image>
+    <title>$digest_rss_title</title>
+    <url>$digest_rss_image</url>
+    <link>$digest_rss_url</link>
+  </image>
+
+__EOF__
+
+    foreach (reverse sort keys %plansdates) {
+        my $user = $plansdates{$_};
+        my $modtime = get_minimal_sqldate($_);
+        my $href = "href=\"$base_url?user=$user\"";
+        print RSS_DIGESTH "  <item rdf:about=\"$href\">\n";
+        print RSS_DIGESTH "    <title>$user - $modtime</title>\n";
+        print RSS_DIGESTH "    <link>$href</link>\n";
+        print RSS_DIGESTH "  </item>\n\n";
+    }
+
+    print RSS_DIGESTH "</rdf:RDF>\n\n";
+    close(RSS_DIGESTH);
 }
 
 
@@ -541,7 +626,6 @@ __EOF__
         print("\n");
     }
 }
-
 
 sub parse_args {
     my $args = shift;
@@ -1144,12 +1228,18 @@ sub reap_kids {
 }
 
 
+sub do_digests {
+    do_digest();
+    do_rss_digest();
+}
+
+
 sub daemon_upkeep {
     return if not defined $digest_frequency;
 
     my $curtime = time();
-    if ($curtime <= $next_plan_digest) {
-        do_digest();
+    if ($curtime >= $next_plan_digest) {
+        do_digests();
         $next_plan_digest += ($digest_frequency * 60);
     }
 }
@@ -1177,7 +1267,7 @@ if (not $daemonize) {
     drop_privileges();
 
     if ($next_plan_digest) {
-        do_digest();
+        do_digests();
     } else {
         $retval = finger_mainline();
     }
@@ -1216,7 +1306,7 @@ if ($use_syslog) {
 
 if (defined $digest_frequency) {
     $next_plan_digest = time() + ($digest_frequency * 60);
-    do_digest(); # Dump a digest right at the start.
+    do_digests(); # Dump a digest right at the start.
 }
 
 while (1)
