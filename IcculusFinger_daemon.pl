@@ -558,7 +558,7 @@ __EOF__
     foreach (reverse sort keys %plansdates) {
         my $user = $plansdates{$_};
         my $modtime = get_minimal_sqldate($_);
-        my $href = "href=\"$base_url?user=$user\"";
+        my $href = "$base_url?user=$user";
         print RSS_DIGESTH "  <item rdf:about=\"$href\">\n";
         print RSS_DIGESTH "    <title>$user - $modtime</title>\n";
         print RSS_DIGESTH "    <link>$href</link>\n";
