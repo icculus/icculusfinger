@@ -906,13 +906,16 @@ sub verify_and_load_request {
         $errormsg = "No user specified.";
     } elsif ($user =~ /\@/) {
         $errormsg = "Finger request forwarding is forbidden.";
-    } elsif ( (length($user) > 20) ||
-              ($user =~ /[^A-Za-z0-9_]/) ||
-              ($user !~ /\.\/[^\/]+/ && $files_allowed==1) ) {
+    } elsif (length($user) > 20) {
         # The 20 char limit is just for safety against potential buffer overflows
         #  in finger servers, but it's more or less arbitrary.
+        $errormsg = "Bogus user specified.\n";
+    } elsif (($user =~ /[^A-Za-z0-9_]/) and ($files_allowed==0) ) {
         # Anything other than A-Za-z0-9_ is probably not a username.
         $errormsg = "Bogus user specified.\n";
+    } elsif (($user !~ /(\.\/)?[^\/]+/) and ($files_allowed==1) ) {
+        # If we're allowing files, then allow a "./" prefix but no other "/"s
+        $errormsg = "Bogus user or file specified.\n";
     } else {
         if (defined $fakeusers{$user}) {
             $output_text = $fakeusers{$user}->();
