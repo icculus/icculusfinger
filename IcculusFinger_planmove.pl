@@ -21,6 +21,7 @@
 
 use strict;
 use warnings;
+use File::Copy;
 
 #-----------------------------------------------------------------------------#
 #             CONFIGURATION VARIABLES: Change to suit your needs...           #
@@ -108,7 +109,7 @@ sub check_dir {
     }
 
     print(" + Moving $homepath to $fingerpath ... \n");
-    rename($homepath, $fingerpath) or die("rename failed:  $!\n");
+    move($homepath, $fingerpath) or die("move failed:  $!\n");
     symlink($fingerpath, $homepath) or die("symlink failed:  $!\n");
 }
 
