@@ -51,10 +51,11 @@
 #  2.1.4 : Moved plan digest hashing to separate function (hashplans()),
 #          added RSS digest (thanks, zakk!), and unified them in do_digests().
 #          Digests can have a maximum user output now.
+#  2.1.5 : Fixes from Gary Briggs: Fixed a regexp, made line before ending
+#          text format better, fixed centering on Lynx.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
-# !!! TODO: Make [center] tags attempt to format plain text.
 
 
 use strict;          # don't touch this line, nootch.
@@ -64,7 +65,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.4";
+my $version = "v2.1.5";
 
 
 #-----------------------------------------------------------------------------#
@@ -626,8 +627,11 @@ sub output_ending {
 __EOF__
 
     } else {
-        # !!! FIXME : Make that ------ line fit the length of the strings.
-        print "-------------------------------------------------------------------------\n";
+	# Perl has no builtin max
+	my $maxlength = length($revision);
+	$maxlength = length($text_credits) if(length($text_credits)>$maxlength);
+	$maxlength = length($wittyremark) if(length($wittyremark)>$maxlength);
+        print "-" x $maxlength . "\n";
         print "$revision\n" if (defined $revision);
         print "$text_credits\n";
         print "$wittyremark\n\n";
@@ -946,10 +950,7 @@ sub do_fingering {
     if (defined $wanted_section) {
         print("Using specific section: $wanted_section ...\n") if $debug;
 
-        # !!! FIXME: Why isn't the substitution working? I need to assign $2 directly for some reason...
-        if ($output_text =~ s/\[section=\"$wanted_section\"\](\r\n|\n|\b)(.*?)\[\/section\](\r\n|\n|\b)/$2/is) {
-            $output_text = $2;
-        } else {
+	if (! ($output_text =~ s/.*\[section=\"$wanted_section\"\]\s*(.*?)\[\/section\].*/$1/is) ) {
             $output_text = "section \"$wanted_section\" not found.\n";
         }
     } else {
@@ -1033,10 +1034,19 @@ sub do_fingering {
     }
 
     if ($do_html_formatting and ($browser =~ /Lynx/)) {
-        # !!! FIXME: executable regexps suck.
-        # !!! FIXME: This doesn't work very well.
-        1 while ($output_text =~ s/^( +)/"&nbsp;" x length($1)/mse);
-        1 while ($output_text =~ s/\r//s);
+        #1 while ($output_text =~ s/^( +)/"&nbsp;" x length($1)/mse);
+
+	# The other choice being to split this puppy into two around
+	#  the spaces, and gaffer them back together with
+	#  $output_string = $1.length($2)x"&nbsp;".$3
+	#  But that's not the perl way.
+
+	1 while ($output_text =~ s/^ /\&nbsp;/ms);
+	1 while ($output_text =~ s/^(\&nbsp;)+ /$1\&nbsp;/ms);
+
+	# Don't forget some people still use macs.
+        1 while ($output_text =~ s/\r\n/<br>/s);
+        1 while ($output_text =~ s/\r/<br>/s);
         1 while ($output_text =~ s/\n/<br>/s);
     }
 
