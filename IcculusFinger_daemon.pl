@@ -42,6 +42,10 @@
 #          just works from the command line. (Thanks to Gary "Chunky Kibbles"
 #          Briggs for the suggestion and patches!)
 #  2.1.1 : Disabled the email URLizer for now. Added an "uptime" fakeuser.
+#  2.1.2 : Centering, based on 80 columns, in text output, digest is now
+#          sorted correctly. (Thanks, Gary!) Daemon now select()s on the
+#          listen socket so it can timeout and do the .planfile digest. Other
+#          cleanups and fixes in the daemon code.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -52,9 +56,10 @@ use strict;          # don't touch this line, nootch.
 use warnings;        # don't touch this line, either.
 use DBI;             # or this. I guess. Maybe.
 use File::Basename;  # blow.
+use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.1";
+my $version = "v2.1.2";
 
 
 #-----------------------------------------------------------------------------#
@@ -299,6 +304,8 @@ my $digest_append = "</body></html>\n";
 #  existing user through this mechanism.
 my %fakeusers;  # the hash has to exist; don't comment this line.
 
+# The elements of the hash, however, can be added and removed at your whim.
+
 $fakeusers{'fortune'} = sub {
     return(`/usr/games/fortune`);
 };
@@ -351,7 +358,7 @@ my $list_sections = 0;
 my $list_archives = 0;
 my $embed = 0;
 my $do_link_digest = undef;
-my $run_digest = 0;
+my $next_plan_digest = 0;
 
 
 sub get_sqldate {
@@ -430,7 +437,9 @@ sub do_digest {
     print DIGESTH $digest_prepend if defined $digest_prepend;
     print DIGESTH "\n<p>\n ";
 
-    print DIGESTH "<table border=1>\n";
+    print DIGESTH "<table border=0>\n";
+
+    my %plansdates;
 
     foreach (@plans) {
         my $user = $_;
@@ -444,10 +453,17 @@ sub do_digest {
         my $filesize = $statbuf[7];
         next if ($filesize <= 0);  # Skip empty .plans
 
-        my $modtime = get_minimal_sqldate($statbuf[9]);
+        # construct the hash backward for easy
+        #    sorting-by-time in the next loop
+        $plansdates{$statbuf[9]} = $user;
+    }
+
+    foreach ( reverse sort keys %plansdates) {
+        my $user = $plansdates{$_};
+        my $modtime = get_minimal_sqldate($_);
         my $href = "href=\"$base_url?user=$user\"";
         print DIGESTH " <tr>\n";
-        print DIGESTH "  <td><a $href>$user</a></td>\n";
+        print DIGESTH "  <td align=\"right\"><a $href>$user</a></td>\n";
         print DIGESTH "  <td>$modtime</td>\n";
         print DIGESTH " </tr>\n";
     }
@@ -870,21 +886,6 @@ sub do_fingering {
         1 while ($output_text =~ s/\[u](.*?)\[\/u\]/$1/is);
     }
 
-    # Change [center][/center] tags.
-    if ($do_html_formatting) {
-        if ($browser =~ /Opera/) {
-            while ($output_text =~ /\[center](.*?)\[\/center\]/is) {
-                my $buf = $1;
-                1 while ($buf =~ s/\n/<br>/s);
-                $output_text =~ s/\[center](.*?)\[\/center\]/<\/pre><center><code>$buf<\/code><\/center><pre>/is;
-            }
-        } else {
-            1 while ($output_text =~ s/\[center](.*?)\[\/center\]/<center>$1<\/center>/is);
-        }
-    } else {
-        1 while ($output_text =~ s/\[center](.*?)\[\/center\]/$1/is);
-    }
-
     # Change [font][/font] tags.
     if ($do_html_formatting) {
         1 while ($output_text =~ s/\[font (.*?)](.*?)\[\/font\]/<font $1>$2<\/font>/is);
@@ -940,6 +941,30 @@ sub do_fingering {
         1 while ($output_text =~ s/^( +)/"&nbsp;" x length($1)/mse);
         1 while ($output_text =~ s/\r//s);
         1 while ($output_text =~ s/\n/<br>/s);
+    }
+
+    # Change [center][/center] tags.
+    if ($do_html_formatting) {
+        if ($browser =~ /Opera/) {
+            while ($output_text =~ /\[center](.*?)\[\/center\]/is) {
+                my $buf = $1;
+                1 while ($buf =~ s/\n/<br>/s);
+                $output_text =~ s/\[center](.*?)\[\/center\]/<\/pre><center><code>$buf<\/code><\/center><pre>/is;
+            }
+        } else {
+            1 while ($output_text =~ s/\[center](.*?)\[\/center\]/<center>$1<\/center>/is);
+        }
+    } else {
+        while ($output_text =~ s/\[center](.*?)\[\/center\](.*)//si) {
+            foreach (split("\n", $1)) {
+                s/^\s*//g;
+                s/\s*$//g;
+                my $l = length($_);
+                my $centering = (($l < 80) ? ((80 - $l) / 2) : 0);
+                $output_text .= "\n" . (" " x $centering) . $_;
+            }
+            $output_text .= "\n" . $2;
+        }
     }
 
     if ($#title_array >= 0) {
@@ -1038,12 +1063,6 @@ sub read_request {
 
 
 sub finger_mainline {
-    if ($run_digest) {
-        do_digest();
-	$run_digest = 0;
-	return(0);
-    }
-
     my $query_string = read_request();
 
     my $syslog_text;
@@ -1125,17 +1144,24 @@ sub reap_kids {
 }
 
 
-# Mainline.
+sub daemon_upkeep {
+    return if not defined $digest_frequency;
 
-if (defined $read_timeout) {
-    use IO::Select;
+    my $curtime = time();
+    if ($curtime <= $next_plan_digest) {
+        do_digest();
+        $next_plan_digest += ($digest_frequency * 60);
+    }
 }
+
+
+# Mainline.
 
 foreach (@ARGV) {
     $daemonize = 1, next if $_ eq '--daemonize';
     $daemonize = 1, next if $_ eq '-d';
     $daemonize = 0, next if $_ eq '--no-daemonize';
-    $run_digest = 1, next if $_ eq '--digest';
+    $next_plan_digest = 1, next if $_ eq '--digest';
     die("Unknown command line \"$_\".\n");
 }
 
@@ -1149,68 +1175,92 @@ if ($use_syslog) {
 my $retval = 0;
 if (not $daemonize) {
     drop_privileges();
-    $retval = finger_mainline();
-} else {
-    if ($use_syslog) {
-        syslog("info", "IcculusFinger daemon $version starting up...");
+
+    if ($next_plan_digest) {
+        do_digest();
+    } else {
+        $retval = finger_mainline();
     }
 
-    go_to_background();
-
-    # reap zombies from client forks...
-    $SIG{CHLD} = \&reap_kids;
-    $SIG{TERM} = \&signal_catcher;
-    $SIG{INT} = \&signal_catcher;
-
-    use IO::Socket::INET;
-    my $listensock = IO::Socket::INET->new(LocalPort => $server_port,
-                                           Type => SOCK_STREAM,
-                                           ReuseAddr => 1,
-                                           Listen => $max_connects);
-
-    syslog_and_die("couldn't create listen socket: $!") if (not $listensock);
-
-    drop_privileges();
-
-    if ($use_syslog) {
-        syslog("info", "Now accepting connections (max $max_connects" .
-                       " simultaneous on port $server_port).");
-    }
-
-    while (1)
-    {
-        # prevent connection floods.
-        sleep(1) while (scalar(@kids) >= $max_connects);
-
-        my $client = $listensock->accept();
-        syslog_and_die("accept() failed: $!") if (not $client);
-
-        my $ip = $client->peerhost();
-        syslog("info", "connection from $ip") if ($use_syslog);
-
-        $ENV{'TCPREMOTEIP'} = $ip;
-
-        my $kidpid = fork();
-        syslog_and_die("fork() failed: $!") if (not defined $kidpid);
-
-        if ($kidpid) {  # this is the parent process.
-            close($client);  # parent has no use for client socket.
-            push @kids, $kidpid;
-        } else {
-            close($listensock);   # child has no use for listen socket.
-            local *FH = $client;
-            open(STDIN, "<&FH") or syslog_and_die("no STDIN reassign: $!");
-            open(STDERR, ">&FH") or syslog_and_die("no STDERR reassign: $!");
-            open(STDOUT, ">&FH") or syslog_and_die("no STDOUT reassign: $!");
-            my $retval = finger_mainline();
-            close($client);
-            exit $retval;  # kill child.
-        }
-    }
-
-    close($listensock);  # shouldn't ever hit this.
+    exit $retval;
 }
 
+# The daemon.
+
+if ($use_syslog) {
+    syslog("info", "IcculusFinger daemon $version starting up...");
+}
+
+go_to_background();
+
+# reap zombies from client forks...
+$SIG{CHLD} = \&reap_kids;
+$SIG{TERM} = \&signal_catcher;
+$SIG{INT} = \&signal_catcher;
+
+use IO::Socket::INET;
+my $listensock = IO::Socket::INET->new(LocalPort => $server_port,
+                                       Type => SOCK_STREAM,
+                                       ReuseAddr => 1,
+                                       Listen => $max_connects);
+
+syslog_and_die("couldn't create listen socket: $!") if (not $listensock);
+
+my $selection = new IO::Select( $listensock );
+drop_privileges();
+
+if ($use_syslog) {
+    syslog("info", "Now accepting connections (max $max_connects" .
+                    " simultaneous on port $server_port).");
+}
+
+if (defined $digest_frequency) {
+    $next_plan_digest = time() + ($digest_frequency * 60);
+    do_digest(); # Dump a digest right at the start.
+}
+
+while (1)
+{
+    # prevent connection floods.
+    daemon_upkeep(), sleep(1) while (scalar(@kids) >= $max_connects);
+
+    # if timed out, do upkeep and try again.
+    daemon_upkeep() while not $selection->can_read(10);
+
+    # we've got a connection!
+    my $client = $listensock->accept();
+    if (not $client) {
+        syslog("info", "accept() failed: $!") if ($use_syslog);
+        next;
+    }
+
+    my $ip = $client->peerhost();
+    syslog("info", "connection from $ip") if ($use_syslog);
+
+    my $kidpid = fork();
+    if (not defined $kidpid) {
+        syslog("info", "fork() failed: $!") if ($use_syslog);
+        close($client);
+        next;
+    }
+
+    if ($kidpid) {  # this is the parent process.
+        close($client);  # parent has no use for client socket.
+        push @kids, $kidpid;
+    } else {
+        $ENV{'TCPREMOTEIP'} = $ip;
+        close($listensock);   # child has no use for listen socket.
+        local *FH = $client;
+        open(STDIN, "<&FH") or syslog_and_die("no STDIN reassign: $!");
+        open(STDERR, ">&FH") or syslog_and_die("no STDERR reassign: $!");
+        open(STDOUT, ">&FH") or syslog_and_die("no STDOUT reassign: $!");
+        my $retval = finger_mainline();
+        close($client);
+        exit $retval;  # kill child.
+    }
+}
+
+close($listensock);  # shouldn't ever hit this.
 exit $retval;
 
 # end of finger.pl ...
