@@ -1,3 +1,6 @@
 - Move all these config variables to an external file that gets included (or
   parsed?) at runtime. Consolidate variables.
+- Make the listarchives output not suck.
+- Other FIXMEs in the code.
+
 
