@@ -63,9 +63,11 @@
 #  2.1.10: Changes by Gary Briggs: Added local file parsing for specific
 #          situations, made image text more useful. Added support for
 #          stylesheets, and [entry][/entry] tags
+#  2.1.11: Changes by Gary Briggs: Fixed div tag placement in $embed
+#          and plaintext
 #-----------------------------------------------------------------------------
 
-# !!! TODO: Let [img] tags nest inside [link] tags.
+# !!! TODO: If an [img] isn't in a link tag, make it link to the image.
 
 
 use strict;          # don't touch this line, nootch.
@@ -629,9 +631,10 @@ __EOF__
    </div>
    <hr>
  
-   <div class="content">
-
 __EOF__
+
+   print "<div class=\"content\">";
+
     print "\n<pre>\n" if ($browser !~ /Lynx/);
 }
 
@@ -641,8 +644,9 @@ sub output_ending {
     if (($is_web_interface) or ($do_html_formatting) and ($browser !~ /Lynx/)) {
         print("    </pre>\n");
     }
-
-	print("</div>\n");
+    if (($is_web_interface) or ($do_html_formatting)) {
+        print("    </div>\n");
+    }
 
     return if $embed;
 
