@@ -75,7 +75,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.9";
+my $version = "v2.1.10";
 
 
 #-----------------------------------------------------------------------------#
