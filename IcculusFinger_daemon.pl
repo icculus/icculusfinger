@@ -870,11 +870,11 @@ sub load_file {
     my $fname;
     my $errormsg = undef;
 
-	if($files_allowed==1 && $user =~ /^\.\/[^\/]*$/) {
-		$fname = $user;
-	} else {
-    	$fname = ($use_homedir) ? "/home/$user/.plan" : "$fingerspace/$user";
-	}
+    if($files_allowed==1 && $user =~ /^\.\/[^\/]*$/) {
+        $fname = $user;
+    } else {
+        $fname = ($use_homedir) ? "/home/$user/.plan" : "$fingerspace/$user";
+    }
 
     if (not -f "$fname") {  # this is NOT an error.
         $output_text = "";
@@ -906,9 +906,9 @@ sub verify_and_load_request {
         $errormsg = "No user specified.";
     } elsif ($user =~ /\@/) {
         $errormsg = "Finger request forwarding is forbidden.";
-    } elsif (length($user) > 20 ||
-			($user =~ /[^A-Za-z0-9_]/ && $files_allowed==0) ||
-			!($user =~ /\.\/[^\/]*/ && $files_allowed==1) ) {
+    } elsif ( (length($user) > 20) ||
+              ($user =~ /[^A-Za-z0-9_]/) ||
+              ($user !~ /\.\/[^\/]+/ && $files_allowed==1) ) {
         # The 20 char limit is just for safety against potential buffer overflows
         #  in finger servers, but it's more or less arbitrary.
         # Anything other than A-Za-z0-9_ is probably not a username.
