@@ -65,6 +65,7 @@
 #          stylesheets, and [entry][/entry] tags
 #  2.1.11: Changes by Gary Briggs: Fixed div tag placement in $embed
 #          and plaintext
+#  2.1.12: Minor RDF fixes.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -77,7 +78,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.10";
+my $version = "v2.1.12";
 
 
 #-----------------------------------------------------------------------------#
@@ -326,7 +327,7 @@ my $digest_filename = '/webspace/icculus.org/fingerdigest.html';
 # Filename to write finger digest RSS to, "undef" will universally
 # disable RSS digest generation, from the daemon or the command line. See
 # other notes above.
-my $digest_rss_filename = '/webspace/icculus.org/fingerdigest.rss';
+my $digest_rss_filename = '/webspace/icculus.org/fingerdigest.rdf';
 
 # Set this to a string you want to prepend to the finger digest. If you
 #  aren't planning to include the digest in another webpage via PHP or
@@ -567,7 +568,6 @@ sub do_rss_digest {
     }
 
     print RSS_DIGESTH <<__EOF__;
-
 <?xml version="1.0" encoding="utf-8"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
          xmlns="http://purl.org/rss/1.0/">
