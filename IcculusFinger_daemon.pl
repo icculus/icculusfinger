@@ -624,12 +624,12 @@ __EOF__
   </head>
 
   <body>
-   <div name="top">
+   <div class="top">
      <center><h1>Finger info for $user\@$host...</h1></center>
    </div>
    <hr>
  
-   <div name="content">
+   <div class="content">
 
 __EOF__
     print "\n<pre>\n" if ($browser !~ /Lynx/);
@@ -655,7 +655,7 @@ sub output_ending {
         $revision = ((defined $revision) ? "$revision<br>\n" : '');
 
         print <<__EOF__;
-    <div name="bottom">
+    <div class="bottom">
     <hr>
     <center>
       <font size="-3">
@@ -1020,7 +1020,7 @@ sub do_fingering {
 
     # Change [entry][/entry] tags.
     if ($do_html_formatting) {
-        1 while ($output_text =~ s/\[entry](.*?)\[\/entry\]/<div name="entry">$1<\/div name="entry">/is);
+        1 while ($output_text =~ s/\[entry](.*?)\[\/entry\]/<div class="entry">$1<\/div>/is);
     } else {
         1 while ($output_text =~ s/\[entry](.*?)\[\/entry\]/$1/is);
     }
