@@ -157,7 +157,7 @@ Planfiles are only archived if they have been updated since the last time they
 were archived (so as not to fill the database), and a certain amount of time
 has elasped since the update took place (so as not to archive plans in the
 middle of being edited, and limit the archiving of chatty users that feel the
-need to continually update their plans). There is also a metatag uses can put
+need to continually update their plans). There is also a metatag users can put
 in their planfiles to prevent archiving if only certain sections are changed.
 For example, I keep various info in my .plan that doesn't change often, and
 is significant when it does, but there's also a continually updated TODO
