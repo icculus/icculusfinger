@@ -59,6 +59,7 @@ sub check_dir {
     }
 
     if (not -d "$homebasedir/$user") {
+        return if ($user eq '.keep');  # gentoo fix.
         print(" - $homebasedir/$user isn't a directory. Wierd.\n");
         return;
     }
