@@ -73,8 +73,11 @@ my $dbname = 'IcculusFinger';
 my $dbtable_archive = 'finger_archive';
 
 my $post_to_icculusnews = 1;
-my $newsauthor = 'fingermaster';
-my $newsposter = '/usr/local/bin/IcculusNews_post.pl';
+my $newshost     = 'localhost';
+my $newsauthor   = 'fingermaster';
+my $newsposter   = '/usr/local/bin/IcculusNews_post.pl';
+my $newspass     = undef;
+my $newspassfile = '/etc/IcculusFinger_newspass.txt';
 
 #-----------------------------------------------------------------------------#
 #     The rest is probably okay without you laying yer dirty mits on it.      #
@@ -107,7 +110,8 @@ sub run_external_updater {
 
         print("   parsed markup tags...\n") if $debug;
         my $newssubj = "Notable .plan update from $u";
-        my $rc = open(PH, "|$newsposter '$newsauthor' '$newssubj' -");
+        $ENV{'ICCNEWS_POST_PASS'} = $newspass if defined $newspass;
+        my $rc = open(PH, "|$newsposter '$newshost' '$newsauthor' '1' '$newssubj' -");
         if (not $rc) {
             print("   No pipe to IcculusNews: $!\n");
         } else {
@@ -198,6 +202,10 @@ sub update_planfile {
         my @row = $sth->fetchrow_array();
         if (not @row) {
             print("   Don't seem to have a previous entry ...\n") if $debug;
+            if ( (stat($filename))[7] == 0 ) {
+                print("    ...but the .plan is empty. Skipping.\n") if $debug;
+                return;
+            }
         } else {
             my $t = time();
             if ($t < $modtime) {
@@ -274,6 +282,17 @@ if (not defined $dbpass) {
         chomp($dbpass);
         $dbpass =~ s/\A\s*//;
         $dbpass =~ s/\s*\Z//;
+        close(FH);
+    }
+}
+
+if ((not defined $newspass) && (not defined $ENV{'ICCNEWS_POST_PASS'})) {
+    if (defined $newspassfile) {
+        open(FH, $newspassfile) or die("failed to open $newspassfile: $!\n");
+        $newspass = <FH>;
+        chomp($newspass);
+        $newspass =~ s/\A\s*//;
+        $newspass =~ s/\s*\Z//;
         close(FH);
     }
 }
