@@ -42,7 +42,14 @@ my $version = "v2.0beta1";
 #-----------------------------------------------------------------------------#
 
 # This is a the hostname you want to claim to be...
+#  This reports "Finger info for $user\@$host ..." in the web interface,
+#  and is used for listing finger requests to finger clients:
+#   "Finger $user?section=sectionname\@$host", etc.
 my $host = 'icculus.org';
+
+# This is the URL for fingering accounts, for when we need to generate
+#  URLs. "$url?user=$user&section=sectionname".
+my $base_url = 'http://icculus.org/cgi-bin/finger/finger.pl';
 
 # Set $use_homedir to something nonzero if want to read planfiles from the
 #  standard Unix location ("/home/$user/.plan"). Note that this is a security
@@ -206,7 +213,8 @@ my $wanted_section = undef;
 my $output_text = "";
 my $archive_date = undef;
 my $archive_time = undef;
-
+my $list_sections = 0;
+my $list_archives = 0;
 
 my $did_output_start = 0;
 sub output_start {
@@ -301,6 +309,14 @@ sub parse_args {
         $archive_time = $2;
     }
 
+    if ($args =~ s/(\A|&)listsections=(.*?)(&|\Z)/$1/) {
+        $list_sections = $2;
+    }
+
+    if ($args =~ s/(\A|&)listarchives=(.*?)(&|\Z)/$1/) {
+        $list_archives = $2;
+    }
+
     # !!! FIXME: This is a pretty lame solution.
     if ($browser =~ /Lynx/) {
         $do_html_formatting = 0;
@@ -310,10 +326,71 @@ sub parse_args {
 }
 
 
+sub get_database_link {
+    return("Planfile archives are disabled.") if not $use_database;
+
+    if (not defined $dbpass) {
+        if (defined $dbpassfile) {
+            open(FH, $dbpassfile) or return("failed to open $dbpassfile: $!\n");
+            $dbpass = <FH>;
+            chomp($dbpass);
+            $dbpass =~ s/\A\s*//;
+            $dbpass =~ s/\s*\Z//;
+            close(FH);
+        }
+    }
+
+    my $dsn = "DBI:mysql:database=$dbname;host=$dbhost";
+    $_[0] = DBI->connect($dsn, $dbuser, $dbpass) or
+                  return(DBI::errstr);
+    return(undef);
+}
+
+
+sub load_archive_list {
+    my $user = shift;
+    my $link;
+    my $err = get_database_link($link);
+    return($err) if defined $err;
+
+    my $u = $link->quote($user);
+    my $sql = "select postdate from $dbtable_archive where username=$u" .
+              " order by postdate desc";
+    my $sth = $link->prepare($sql);
+    if (not $sth->execute()) {
+        $link->disconnect();
+        return "can't execute the query: $sth->errstr";
+    }
+
+    my @archivelist;
+    while (my @row = $sth->fetchrow_array()) {
+        push @archivelist, $row[0];
+    }
+
+    if ($#archivelist < 0) {
+        $output_text = '';  # will use $no_report_string.
+    } else {
+        $output_text = "Available archives:\n";
+        foreach (@archivelist) {
+            my ($d, $t) = /(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d)/;
+            $t =~ s/(..):(..):(..)/$1-$2-$3/;
+            if ($do_html_formatting) {
+                my $url = "$base_url?user=$user&date=$d&time=$t";
+                $output_text .= "  \[link=\"$url\"\]$_\[/link\]\n";
+            } else {
+                $output_text .= "  finger $user\@$host?&date=$d&time=$t\n";
+            }
+        }
+    }
+
+    $sth->finish();
+    $link->disconnect();
+    return(undef);
+}
+
+
 sub load_archive {
     my $user = shift;
-
-    return("Planfile archives are disabled.") if not $use_database;
 
     my $sqldate;
     if (defined $archive_date) {
@@ -344,25 +421,13 @@ sub load_archive {
         $sqldate .= " 23:59:59";  # end of day.
     }
 
-    if (not defined $dbpass) {
-        if (defined $dbpassfile) {
-            open(FH, $dbpassfile) or return("failed to open $dbpassfile: $!\n");
-            $dbpass = <FH>;
-            chomp($dbpass);
-            $dbpass =~ s/\A\s*//;
-            $dbpass =~ s/\s*\Z//;
-            close(FH);
-        }
-    }
-
-    my $dsn = "DBI:mysql:database=$dbname;host=$dbhost";
-    my $link = DBI->connect($dsn, $dbuser, $dbpass) or
-                  return(DBI::errstr);
+    my $link;
+    my $err = get_database_link($link);
+    return($err) if defined $err;
 
     my $u = $link->quote($user);
-
-    my$sql = "select postdate, text from $dbtable_archive where username=$u" .
-             " and postdate<='$sqldate' order by postdate desc limit 1";
+    my $sql = "select postdate, text from $dbtable_archive where username=$u" .
+              " and postdate<='$sqldate' order by postdate desc limit 1";
     my $sth = $link->prepare($sql);
     if (not $sth->execute()) {
         $link->disconnect();
@@ -371,7 +436,7 @@ sub load_archive {
 
     my @row = $sth->fetchrow_array();
     if (not @row) {
-        $output_text = '';
+        $output_text = '';  # will use $no_report_string.
     } else {
         $row[1] =~ s/(\A.{0, $max_plan_size}).*\Z/$1/s;
         $archive_date = $row[0];
@@ -425,6 +490,9 @@ sub verify_and_load_request {
         if (defined $fakeusers{$user}) {
             $output_text = $fakeusers{$user}->();
         }
+	elsif ($list_archives) {
+            $errormsg = load_archive_list($user);
+	}
         elsif ((defined $archive_date) or (defined $archive_time)) {
             $errormsg = load_archive($user);
         } else {
@@ -472,6 +540,26 @@ sub do_fingering {
     # Change [wittyremark][/wittyremark] tags.
     while ($output_text =~ s/\[wittyremark\](.*?)\[\/wittyremark\](\r\n|\n|\b)//is) {
         push @wittyremark_array, $1 if $permit_user_wittyremarks;
+    }
+
+    # !!! FIXME: Make this a separate subroutine?
+    if ($list_sections) {
+        my @sectionlist;
+        while ($output_text =~ s/\[section=\"(.*?)\"\](\r\n|\n|\b)(.*?)\[\/section\](\r\n|\n|\b)/$3/is) {
+            push @sectionlist, $1;
+        }
+
+        $output_text = "Available sections:\n";
+        if ($do_html_formatting) {
+            foreach (@sectionlist) {
+                my $url = "$base_url?user=$user&section=$_";
+                $output_text .= "  \[link=\"$url\"\]$_\[/link\]\n";
+            }
+        } else {
+            foreach (@sectionlist) {
+                $output_text .= "  finger $user\@$host?section=$_\n";
+            }
+        }
     }
 
     # Select a section.

@@ -175,6 +175,7 @@ sub update_planfile {
             print("   Newer revision needs archiving.\n") if $debug;
         }
     }
+    $sth->finish();
 
     my $t = read_plantext($link, $filename);
     my $ftext = $link->quote($t);
