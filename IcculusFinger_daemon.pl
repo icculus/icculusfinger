@@ -56,6 +56,8 @@
 #  2.1.6 : Fix from Gary Briggs: undef'd variable reference.
 #  2.1.7 : Fix from Gary Briggs: do some text output for [i], [b], and [u]
 #          markup tags when not in HTML mode.
+#  2.1.8 : Fix from Gary Briggs: IcculusFinger_planmove.pl now handles
+#          moves across filesystems.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -68,7 +70,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.7";
+my $version = "v2.1.8";
 
 
 #-----------------------------------------------------------------------------#
