@@ -66,6 +66,7 @@
 #  2.1.11: Changes by Gary Briggs: Fixed div tag placement in $embed
 #          and plaintext
 #  2.1.12: Minor RDF fixes.
+#  2.1.12: RDF output now works with Thunderbird.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -78,7 +79,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.12";
+my $version = "v2.1.13";
 
 
 #-----------------------------------------------------------------------------#
@@ -567,15 +568,39 @@ sub do_rss_digest {
         return;
     }
 
+    my $rdfitems = "\n";
+    my $digestitems = '';
+    my $x = 0;
+    foreach (reverse sort keys %plansdates) {
+        my $user = $plansdates{$_};
+        my $modtime = get_minimal_sqldate($_);
+        my $href = "$base_url?user=$user";
+        $rdfitems .= "        <rdf:li rdf:resource=\"$href\" />\n";
+        $digestitems .= "  <item rdf:about=\"$href\">\n";
+        $digestitems .= "    <title>$user - $modtime</title>\n";
+        $digestitems .= "    <link>$href</link>\n";
+        $digestitems .= "    <description>.plan update from $user</description>\n";
+        $digestitems .= "  </item>\n\n";
+
+        last if ((defined $digest_max_users) and (++$x >= $digest_max_users));
+    }
+
     print RSS_DIGESTH <<__EOF__;
 <?xml version="1.0" encoding="utf-8"?>
+
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-         xmlns="http://purl.org/rss/1.0/">
+         xmlns="http://purl.org/rss/1.0/"
+>
+
 
   <channel rdf:about="$digest_rss_about">
     <title>$digest_rss_title</title>
     <link>$digest_rss_url</link>
     <description>$digest_rss_desc</description>
+    <image rdf:resource="$digest_rss_image" />
+    <items>
+      <rdf:Seq>$rdfitems      </rdf:Seq>
+    </items>
   </channel>
 
   <image>
@@ -584,22 +609,12 @@ sub do_rss_digest {
     <link>$digest_rss_url</link>
   </image>
 
+$digestitems
+</rdf:RDF>
+
+
 __EOF__
 
-    my $x = 0;
-    foreach (reverse sort keys %plansdates) {
-        my $user = $plansdates{$_};
-        my $modtime = get_minimal_sqldate($_);
-        my $href = "$base_url?user=$user";
-        print RSS_DIGESTH "  <item rdf:about=\"$href\">\n";
-        print RSS_DIGESTH "    <title>$user - $modtime</title>\n";
-        print RSS_DIGESTH "    <link>$href</link>\n";
-        print RSS_DIGESTH "  </item>\n\n";
-
-        last if ((defined $digest_max_users) and (++$x >= $digest_max_users));
-    }
-
-    print RSS_DIGESTH "</rdf:RDF>\n\n";
     close(RSS_DIGESTH);
 }
 
