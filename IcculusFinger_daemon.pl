@@ -61,7 +61,8 @@
 #  2.1.9 : Security fixes in request parsing and syslog output by Chunky and
 #          Primer.
 #  2.1.10: Changes by Gary Briggs: Added local file parsing for specific
-#          situations, made image text more useful.
+#          situations, made image text more useful. Added support for
+#          stylesheets, and [entry][/entry] tags
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -218,6 +219,17 @@ my @title_array;
 # If you are a content-Nazi, you can prevent the user's [title] tags from
 #  being included in the parsing.
 my $permit_user_titles = 1;
+
+# If this array is empty, then no stylesheet is used unless a user
+#  specifies one and you're not a content Nazi. You can populate this
+#  if you wish.
+my @style_array;
+# Don't populate this.
+my $style = "";
+
+# If you are a content-Nazi, you can prevent the user's [style] tags from
+#  being included in the parsing.
+my $permit_user_styles = 1;
 
 # This is printed after the credits at the bottom. Change it to whatever you
 #  like. Do not use HTML. You can specify an empty string (""), but undef
@@ -603,12 +615,21 @@ sub output_start {
 <html>
   <head>
     <title> $title </title>
+__EOF__
+
+	print "<link rel=\"stylesheet\" href=\"$style\"
+		type=\"text/css\">" if(defined $style && length($style) > 0);
+
+    print <<__EOF__ if not $embed;
   </head>
 
   <body>
-   <center><h1>Finger info for $user\@$host...</h1></center>
+   <div name="top">
+     <center><h1>Finger info for $user\@$host...</h1></center>
+   </div>
    <hr>
-
+ 
+   <div name="content">
 
 __EOF__
     print "\n<pre>\n" if ($browser !~ /Lynx/);
@@ -621,6 +642,8 @@ sub output_ending {
         print("    </pre>\n");
     }
 
+	print("</div>\n");
+
     return if $embed;
 
     my $revision = undef;
@@ -632,7 +655,7 @@ sub output_ending {
         $revision = ((defined $revision) ? "$revision<br>\n" : '');
 
         print <<__EOF__;
-
+    <div name="bottom">
     <hr>
     <center>
       <font size="-3">
@@ -641,6 +664,7 @@ sub output_ending {
         <i>$wittyremark</i>
       </font>
     </center>
+	</div>
 __EOF__
 
     } else {
@@ -938,6 +962,11 @@ sub do_fingering {
         $output_text = $no_report_string;
     }
 
+    # Change [style][/style] tags.
+    while ($output_text =~ s/\[style\](.*?)\[\/style\](\r\n|\n|\b)//is) {
+        push @style_array, $1 if $permit_user_styles;
+    }
+
     # Change [title][/title] tags.
     while ($output_text =~ s/\[title\](.*?)\[\/title\](\r\n|\n|\b)//is) {
         push @title_array, $1 if $permit_user_titles;
@@ -987,6 +1016,13 @@ sub do_fingering {
         # HTMLify some characters...
         1 while ($output_text =~ s/</&lt;/s);
         1 while ($output_text =~ s/>/&gt;/s);
+    }
+
+    # Change [entry][/entry] tags.
+    if ($do_html_formatting) {
+        1 while ($output_text =~ s/\[entry](.*?)\[\/entry\]/<div name="entry">$1<\/div name="entry">/is);
+    } else {
+        1 while ($output_text =~ s/\[entry](.*?)\[\/entry\]/$1/is);
     }
 
     # Change [b][/b] tags.
@@ -1104,6 +1140,12 @@ sub do_fingering {
         $title = $title_array[int(rand($#title_array + 1))];
     }
 
+	# Pick last item in array. That way if someone puts one on their
+	#  page, it'll override a site-wide one.
+    if ($#style_array >= 0) {
+        $style = $style_array[$#style_array - 1];
+    }
+
     if ($#wittyremark_array >= 0) {
         $wittyremark = $wittyremark_array[int(rand($#wittyremark_array + 1))];
     }
@@ -1119,6 +1161,15 @@ sub do_fingering {
         }
 
         print("Chosen: [$title].\n");
+
+        $x = $#style_array + 1;
+        print("Number of styles: $x ...\n");
+        print(" styles:\n");
+        foreach (@style_array) {
+            print("  -  [$_]\n");
+        }
+
+        print("Chosen: [$style].\n");
 
         $x = $#wittyremark_array + 1;
         print("Number of witty remarks: $x ...\n");
