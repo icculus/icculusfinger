@@ -82,6 +82,8 @@ sub run_external_updater {
         1 while ($t =~ s/\[center\](.*?)\[\/center\]/<center>$1<\/center>/is);
         1 while ($t =~ s/\[img=(".*?")\].*?\[\/img\]/<img src=$1>/is);
         1 while ($t =~ s/\[link=(".*?")\](.*?)\[\/link\]/<a href=$1>$2<\/a>/is);
+        1 while ($t =~ s/\[defaultsection=".*?"\](\n|\r\n|\b)//is);
+        1 while ($t =~ s/\[section=".*?"\](\n|\r\n|\b)(.*?)[\/section](\n|\r\n|\b)/$2/is);
         1 while ($t =~ s/\[font(.*?)\](.*?)\[\/font\]/<font $1>$2<\/font>/is);
 
         print("   parsed markup tags...\n") if $debug;
