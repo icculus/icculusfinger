@@ -1,9 +1,25 @@
 #!/usr/bin/perl -w
 
 use strict;
+use warnings;
 
+#-----------------------------------------------------------------------------#
+#             CONFIGURATION VARIABLES: Change to suit your needs...           #
+#-----------------------------------------------------------------------------#
+
+# Where the home dirs reside. $homebasedir/username/.plan is where we look...
+# Note that THIS MUST NOT HAVE THE TRAILING DIR SEPARATOR!
 my $homebasedir = '/home';
+
+# This is the directory to move planfiles to. Note that THIS MUST NOT HAVE
+#  THE TRAILING DIR SEPARATOR!
 my $fingerspace = '/fingerspace';
+
+#-----------------------------------------------------------------------------#
+#     The rest is probably okay without you laying yer dirty mits on it.      #
+#-----------------------------------------------------------------------------#
+
+
 
 sub chown_by_name {
     my($user, $file) = @_;
