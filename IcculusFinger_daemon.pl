@@ -38,18 +38,21 @@
 #          connections can't be hogged indefinitely anymore.
 #  2.0.6 : Some syslogging added, minor fix in input reading.
 #          Zombie processes are cleaned up reliably, even under heavy load.
+#  2.1.0 : Added .planfile digest generation. Not hooked up to daemon yet,
+#          just works from the command line.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
 # !!! TODO: Make [center] tags attempt to format plain text.
 
 
-use strict;      # don't touch this line, nootch.
-use warnings;    # don't touch this line, either.
-use DBI;         # or this. I guess. Maybe.
+use strict;          # don't touch this line, nootch.
+use warnings;        # don't touch this line, either.
+use DBI;             # or this. I guess. Maybe.
+use File::Basename;  # blow.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.0.6";
+my $version = "v2.1.0";
 
 
 #-----------------------------------------------------------------------------#
@@ -255,6 +258,34 @@ my $dbname = 'IcculusFinger';
 # The name of the table inside the database we're using.
 my $dbtable_archive = 'finger_archive';
 
+# This is the time, in minutes, to generate a digest webpage of all available
+#  finger accounts. The digest includes last updated time and a link to the
+#  web version of the .plan files. Set this to undef to disable this feature.
+#  Also, this only runs if we're daemonized (--daemonize commandline option).
+#  If you aren't daemonized, you can force a digest update by running
+#  this program from the command line with the --digest option...probably from
+#  a cronjob.
+my $digest_frequency = 10;
+
+# Filename to write finger digest to. "undef" will universally disable digest
+#  generation, from the daemon or command line. Note that this file is opened
+#  for writing _AFTER_ the program drops privileges, whether you run this from
+#  the command line or as a daemon.
+my $digest_filename = '/webspace/icculus.org/fingerdigest.html';
+
+# Set this to a string you want to prepend to the finger digest. If you
+#  aren't planning to include the digest in another webpage via PHP or
+#  whatnot, you should put <html> and <title> tags, etc here. "undef" is
+#  safe, too.
+#my $digest_prepend = undef;
+my $digest_prepend = "<html><head><title>.plan digest</title></head><body>\n";
+
+# Set this to a string you want to append to the finger digest. If you
+#  aren't planning to include the digest in another webpage via PHP or
+#  whatnot, you should put <html> and <title> tags, etc here. "undef" is
+#  safe, too.
+#my $digest_append = undef;
+my $digest_append = "</body></html>\n";
 
 # These are special finger accounts; when a user queries for this fake
 #  user, we hand back the string returned from the attached function as if
@@ -307,6 +338,94 @@ my $list_sections = 0;
 my $list_archives = 0;
 my $embed = 0;
 my $do_link_digest = undef;
+my $run_digest = 0;
+
+
+sub get_sqldate {
+    my $mtime = shift;
+    my @t = localtime($mtime);
+    $t[5] = "0000" . ($t[5] + 1900);
+    $t[5] =~ s/.*?(\d\d\d\d)\Z/$1/;
+    $t[4] = "00" . ($t[4] + 1);
+    $t[4] =~ s/.*?(\d\d)\Z/$1/;
+    $t[3] = "00" . $t[3];
+    $t[3] =~ s/.*?(\d\d)\Z/$1/;
+    $t[2] = "00" . $t[2];
+    $t[2] =~ s/.*?(\d\d)\Z/$1/;
+    $t[1] = "00" . $t[1];
+    $t[1] =~ s/.*?(\d\d)\Z/$1/;
+    $t[0] = "00" . $t[0];
+    $t[0] =~ s/.*?(\d\d)\Z/$1/;
+
+    return('' . ($t[5]) . '-' . ($t[4]) . '-' . ($t[3]) . ' ' .
+                ($t[2]) . ':' . ($t[1]) . ':' . ($t[0]));
+}
+
+
+sub enumerate_planfiles {
+    my $dirname = (($use_homedir) ? '/home' : $fingerspace);
+    opendir(DIRH, $dirname) or return(undef);
+    my @dirents = readdir(DIRH);
+    closedir(DIRH);
+
+    my @retval;
+
+    if ($use_homedir) {
+        foreach (@dirents) {
+            next if (($_ eq '.') or ($_ eq '..'));
+            push @retval, "/home/$_/.plan";
+        }
+    } else {
+        foreach (@dirents) {
+            next if (($_ eq '.') or ($_ eq '..'));
+            push @retval, "$fingerspace/$_";
+        }
+    }
+
+    return(@retval);
+}
+
+
+sub do_digest {
+    return if not defined $digest_filename;
+
+    my @plans = enumerate_planfiles();
+    if (not @plans) {
+        syslog("info", "Failed to enumerate planfiles: $!\n") if ($use_syslog);
+        return;
+    }
+
+    if (not open DIGESTH, '>', $digest_filename) {
+        if ($use_syslog) {
+            syslog("info", "digest: failed to open $digest_filename: $!\n");
+        }
+        return;
+    }
+
+    print DIGESTH $digest_prepend if defined $digest_prepend;
+    print DIGESTH "\n<p>\n  <ul>\n";
+
+    foreach (@plans) {
+        my $user = $_;
+        if ($use_homedir) {
+            $user =~ s#\A/home/(.*?)/\.plan\Z#$1#;
+        } else {
+            $user = basename($_);
+        }
+
+        my @statbuf = stat($_);
+        my $filesize = $statbuf[7];
+        next if ($filesize <= 0);  # Skip empty .plans
+
+        my $modtime = get_sqldate($statbuf[9]);
+        my $href = "href=\"$base_url?user=$user\"";
+        print DIGESTH "    <li><a $href>$user</a> (last updated: $modtime)\n";
+    }
+
+    print DIGESTH "  </ul>\n</p>\n";
+    print DIGESTH $digest_append if defined $digest_append;
+    close(DIGESTH);
+}
 
 
 my $did_output_start = 0;
@@ -433,27 +552,6 @@ sub parse_args {
     $do_link_digest = !$do_html_formatting if (not defined $do_link_digest);
 
     return($args);
-}
-
-
-sub get_sqldate {
-    my $mtime = shift;
-    my @t = localtime($mtime);
-    $t[5] = "0000" . ($t[5] + 1900);
-    $t[5] =~ s/.*?(\d\d\d\d)\Z/$1/;
-    $t[4] = "00" . ($t[4] + 1);
-    $t[4] =~ s/.*?(\d\d)\Z/$1/;
-    $t[3] = "00" . $t[3];
-    $t[3] =~ s/.*?(\d\d)\Z/$1/;
-    $t[2] = "00" . $t[2];
-    $t[2] =~ s/.*?(\d\d)\Z/$1/;
-    $t[1] = "00" . $t[1];
-    $t[1] =~ s/.*?(\d\d)\Z/$1/;
-    $t[0] = "00" . $t[0];
-    $t[0] =~ s/.*?(\d\d)\Z/$1/;
-
-    return('' . ($t[5]) . '-' . ($t[4]) . '-' . ($t[3]) . ' ' .
-                ($t[2]) . ':' . ($t[1]) . ':' . ($t[0]));
 }
 
 
@@ -909,6 +1007,12 @@ sub read_request {
 
 
 sub finger_mainline {
+    if ($run_digest) {
+        do_digest();
+	$run_digest = 0;
+	return(0);
+    }
+
     my $query_string = read_request();
 
     my $syslog_text;
@@ -1000,9 +1104,9 @@ foreach (@ARGV) {
     $daemonize = 1, next if $_ eq '--daemonize';
     $daemonize = 1, next if $_ eq '-d';
     $daemonize = 0, next if $_ eq '--no-daemonize';
+    $run_digest = 1, next if $_ eq '--digest';
     die("Unknown command line \"$_\".\n");
 }
-
 
 if ($use_syslog) {
     use Sys::Syslog qw(:DEFAULT setlogsock);
