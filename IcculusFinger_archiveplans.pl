@@ -85,6 +85,7 @@ sub run_external_updater {
         1 while ($t =~ s/\[defaultsection=".*?"\](\n|\r\n|\b)//is);
         1 while ($t =~ s/\[section=".*?"\](\n|\r\n|\b)(.*?)[\/section](\n|\r\n|\b)/$2/is);
         1 while ($t =~ s/\[font(.*?)\](.*?)\[\/font\]/<font $1>$2<\/font>/is);
+        1 while ($t =~ s/\[noarchive\](.*?)\[\/noarchive\]/$1/is);
 
         print("   parsed markup tags...\n") if $debug;
         my $newssubj = "Notable .plan update from $u";
@@ -164,13 +165,14 @@ sub update_planfile {
     my $modtime = (stat($filename))[9];
     my $fdate = get_sqldate($modtime);
     my $sql = '';
+    my $plantext = undef;
 
     print(" * Examining $user\'s .planfile (modtime $fdate)...\n") if $debug;
 
     $user = $link->quote($user);
 
     # ... get date of the latest archived .plan ...
-    $sql = "select postdate from $dbtable_archive where username=$user" .
+    $sql = "select postdate, text from $dbtable_archive where username=$user" .
            " order by postdate desc limit 1";
     my $sth = $link->prepare($sql);
     $sth->execute() or die "can't execute the query: $sth->errstr";
@@ -202,20 +204,30 @@ sub update_planfile {
             print("   Matches archive timestamp. Skipping.\n") if $debug;
             return;
         } else {
-            print("   Newer revision needs archiving.\n") if $debug;
-        }
+            $plantext = read_plantext($link, $filename);
+            my $plancpy = $plantext;
+	        # Ditch [noarchive][/noarchive] tag blocks and strcmp rest.
+	        1 while ($row[1] =~ s/\[noarchive].*?\[\/noarchive\]//is);
+	        1 while ($plancpy =~ s/\[noarchive].*?\[\/noarchive\]//is);
+            if ($row[1] ne $plancpy) {
+		        print("   Newer revision needs archiving.\n") if $debug;
+	        } else {
+		        print("   Newer revision only changed [noarchive] section(s). Skipping.\n") if ($debug);
+                return;
+	        }
+	    }
     }
     $sth->finish();
 
-    my $t = read_plantext($link, $filename);
-    my $ftext = $link->quote($t);
+    $plantext = read_plantext($link, $filename) if (not defined $plantext);
+    my $ftext = $link->quote($plantext);
     $sql = "insert into $dbtable_archive (username, postdate, text)" .
            " values ($user, '$fdate', $ftext)";
 
     $link->do($sql) or die "can't execute the query: $link->errstr";
     print("   Revision added to archives.\n") if $debug;
 
-    run_external_updater(basename($filename), $fdate, $t);
+    run_external_updater(basename($filename), $fdate, $plantext);
 }
 
 

@@ -31,10 +31,12 @@
 #          Added "root" as a fakeuser.
 #  2.0.2 : Added "time" and "ipaddr" fakeusers.
 #  2.0.3 : Added "linkdigest" arg, and made it the default for text output.
+#  2.0.4 : Added "noarchive" tagblocks and optional "plan written on"
+#          date/time output.
 #-----------------------------------------------------------------------------
 
-# TODO: Let [img] tags nest inside [link] tags.
-# TODO: Make [center] tags attempt to format plain text.
+# !!! TODO: Let [img] tags nest inside [link] tags.
+# !!! TODO: Make [center] tags attempt to format plain text.
 
 
 use strict;    # don't touch this line, nootch.
@@ -42,7 +44,7 @@ use warnings;  # don't touch this line, either.
 use DBI;       # or this. I guess. Maybe.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.0.3";
+my $version = "v2.0.4";
 
 
 #-----------------------------------------------------------------------------#
@@ -107,6 +109,10 @@ my $max_request_size = 1024;
 #  since it will confuse the regular finger client users. You should not
 #  leave this blank or undef it, since that's confusing for everyone.
 my $no_report_string = "[center][i]Nothing to report.[/i][/center]";
+
+# List at the bottom of the finger output (above wittyremark) when the .plan
+#  was last updated?
+my $show_revision_date = 1;
 
 # This is the default title for the webpage. The user can override it with
 #  the [title] tag in their .plan file. Do not use HTML. You can specify an
@@ -246,6 +252,7 @@ my $list_archives = 0;
 my $embed = 0;
 my $do_link_digest = undef;
 
+
 my $did_output_start = 0;
 sub output_start {
     my ($user, $host) = @_;
@@ -279,12 +286,20 @@ sub output_ending {
 
     return if $embed;
 
+    my $revision = undef;
+    if (($show_revision_date) and (defined $archive_date)) {
+        $revision = "When this .plan was written: $archive_date";
+    }
+
     if ($do_html_formatting) {
+        $revision = ((defined $revision) ? "$revision<br>\n" : '');
+
         print <<__EOF__;
 
     <hr>
     <center>
       <font size="-3">
+        $revision
         $html_credits<br>
         <i>$wittyremark</i>
       </font>
@@ -294,6 +309,7 @@ __EOF__
     } else {
         # !!! FIXME : Make that ------ line fit the length of the strings.
         print "-------------------------------------------------------------------------\n";
+        print "$revision\n" if (defined $revision);
         print "$text_credits\n";
         print "$wittyremark\n\n";
     }
@@ -361,6 +377,27 @@ sub parse_args {
     $do_link_digest = !$do_html_formatting if (not defined $do_link_digest);
 
     return($args);
+}
+
+
+sub get_sqldate {
+    my $mtime = shift;
+    my @t = localtime($mtime);
+    $t[5] = "0000" . ($t[5] + 1900);
+    $t[5] =~ s/.*?(\d\d\d\d)\Z/$1/;
+    $t[4] = "00" . ($t[4] + 1);
+    $t[4] =~ s/.*?(\d\d)\Z/$1/;
+    $t[3] = "00" . $t[3];
+    $t[3] =~ s/.*?(\d\d)\Z/$1/;
+    $t[2] = "00" . $t[2];
+    $t[2] =~ s/.*?(\d\d)\Z/$1/;
+    $t[1] = "00" . $t[1];
+    $t[1] =~ s/.*?(\d\d)\Z/$1/;
+    $t[0] = "00" . $t[0];
+    $t[0] =~ s/.*?(\d\d)\Z/$1/;
+
+    return('' . ($t[5]) . '-' . ($t[4]) . '-' . ($t[3]) . ' ' .
+                ($t[2]) . ':' . ($t[1]) . ':' . ($t[0]));
 }
 
 
@@ -493,6 +530,7 @@ sub load_file {
     if (not -f "$fname") {  # this is NOT an error.
         $output_text = "";
     } else {
+        my $modtime = (stat($fname))[9];
         if (not open(FINGER, '<', "$fname")) {
             $errormsg = "Couldn't open planfile: $!";
         } else {
@@ -501,6 +539,8 @@ sub load_file {
             }
             close(FINGER);
         }
+
+        $archive_date = get_sqldate($modtime);
     }
 
     return($errormsg);
@@ -619,13 +659,6 @@ sub do_fingering {
         1 while ($output_text =~ s/\[section=\".*?\"\](.*?)\[\/section\](\r\n|\n|\b)/$1/is);
     }
 
-    if (defined $archive_date) {
-        $output_text = "[center][font size=\"-1\"][b][u]" .
-                       "(Archived plan from $archive_date follows...)" .
-                       "[/u][/b][/font][/center]\n\n\n" . $output_text;
-    }
-
-
     if (($do_html_formatting) or ($is_web_interface)) {
         # HTMLify some characters...
         1 while ($output_text =~ s/</&lt;/s);
@@ -694,6 +727,9 @@ sub do_fingering {
     } else {
         1 while ($output_text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/$2/is);
     }
+
+    # Ditch [noarchive][/noarchive] tags ... those are metadata.
+    1 while ($output_text =~ s/\[noarchive](.*?)\[\/noarchive\]/$1/is);
 
     if ($do_html_formatting) {
         # try to make URLs into hyperlinks in the HTML output.
