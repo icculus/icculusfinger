@@ -63,6 +63,7 @@ my $newsposter = '/usr/local/bin/IcculusNews_post.pl';
 #     The rest is probably okay without you laying yer dirty mits on it.      #
 #-----------------------------------------------------------------------------#
 
+my $force_archive = undef;
 
 sub run_external_updater {
     my $u = shift;
@@ -101,10 +102,6 @@ sub run_external_updater {
     }
 }
 
-
-#----------------------------------------------------------------------------#
-# End of setup vars. The rest is probably okay without you touching it.      #
-#----------------------------------------------------------------------------#
 
 sub get_planfiles {
     my $dirname = shift;
@@ -167,57 +164,62 @@ sub update_planfile {
     my $sql = '';
     my $plantext = undef;
 
-    print(" * Examining $user\'s .planfile (modtime $fdate)...\n") if $debug;
-
-    $user = $link->quote($user);
-
-    # ... get date of the latest archived .plan ...
-    $sql = "select postdate, text from $dbtable_archive where username=$user" .
-           " order by postdate desc limit 1";
-    my $sth = $link->prepare($sql);
-    $sth->execute() or die "can't execute the query: $sth->errstr";
-
-    my @row = $sth->fetchrow_array();
-    if (not @row) {
-        print("   Don't seem to have a previous entry ...\n") if $debug;
+    if ((defined $force_archive) and ($force_archive eq $user)) {
+        print(" * Forcing archival of $user\'s .planfile...\n") if $debug;
+        $user = $link->quote($user);
     } else {
-        my $t = time();
-        if ($t < $modtime) {
-            print("   WARNING: file timestamp is in the future!\n") if $debug;
+        print(" * Examining $user\'s .planfile (modtime $fdate)...\n") if $debug;
+
+        $user = $link->quote($user);
+
+        # ... get date of the latest archived .plan ...
+        $sql = "select postdate, text from $dbtable_archive where username=$user" .
+               " order by postdate desc limit 1";
+        my $sth = $link->prepare($sql);
+        $sth->execute() or die "can't execute the query: $sth->errstr";
+
+        my @row = $sth->fetchrow_array();
+        if (not @row) {
+            print("   Don't seem to have a previous entry ...\n") if $debug;
         } else {
-            if ( ($t - $modtime) < ($update_delay * 60) ) {
-                if ($debug) {
-                    my $oktime = int($update_delay - (($t - $modtime) / 60));
-                    print("   File update is too new to archive.\n");
-                    print("   (Try again in $oktime minutes.)\n");
+            my $t = time();
+            if ($t < $modtime) {
+                print("   WARNING: file timestamp is in the future!\n") if $debug;
+            } else {
+                if ( ($t - $modtime) < ($update_delay * 60) ) {
+                    if ($debug) {
+                        my $oktime = int($update_delay - (($t - $modtime) / 60));
+                        print("   File update is too new to archive.\n");
+                        print("   (Try again in $oktime minutes.)\n");
+                    }
+                    return;
                 }
-                return;
             }
-        }
 
-        if ($debug) {
-            my $x = $row[0];
-            print("   dates: [$x] [$fdate]\n");
-        }
+            if ($debug) {
+                my $x = $row[0];
+                print("   dates: [$x] [$fdate]\n");
+            }
 
-        if ($row[0] eq $fdate) {
-            print("   Matches archive timestamp. Skipping.\n") if $debug;
-            return;
-        } else {
-            $plantext = read_plantext($link, $filename);
-            my $plancpy = $plantext;
-	        # Ditch [noarchive][/noarchive] tag blocks and strcmp rest.
-	        1 while ($row[1] =~ s/\[noarchive].*?\[\/noarchive\]//is);
-	        1 while ($plancpy =~ s/\[noarchive].*?\[\/noarchive\]//is);
-            if ($row[1] ne $plancpy) {
-		        print("   Newer revision needs archiving.\n") if $debug;
-	        } else {
-		        print("   Newer revision only changed [noarchive] section(s). Skipping.\n") if ($debug);
+            if ($row[0] eq $fdate) {
+                print("   Matches archive timestamp. Skipping.\n") if $debug;
                 return;
-	        }
-	    }
+            } else {
+                $plantext = read_plantext($link, $filename);
+                my $plancpy = $plantext;
+    	        # Ditch [noarchive][/noarchive] tag blocks and strcmp rest.
+    	        1 while ($row[1] =~ s/\[noarchive].*?\[\/noarchive\]//is);
+    	        1 while ($plancpy =~ s/\[noarchive].*?\[\/noarchive\]//is);
+                if ($row[1] ne $plancpy) {
+    		        print("   Newer revision needs archiving.\n") if $debug;
+    	        } else {
+    		        print("   Newer revision only changed [noarchive] section(s). Skipping.\n") if ($debug);
+                    return;
+    	        }
+    	    }
+        }
+        $sth->finish();
     }
-    $sth->finish();
 
     $plantext = read_plantext($link, $filename) if (not defined $plantext);
     my $ftext = $link->quote($plantext);
@@ -233,12 +235,17 @@ sub update_planfile {
 
 # the mainline.
 
-foreach (@ARGV) {
-    $debug = 1, next if ($_ eq '--debug');
-    #$username = $_, next if (not defined $username);
-    #$subject = $_, next if (not defined $subject);
-    #$text = $_, next if (not defined $text);
+for (my $i = 0; $i < scalar(@ARGV); $i++) {
+    my $arg = $ARGV[$i];
+    $debug = 1, next if ($arg eq '--debug');
+    $force_archive = $ARGV[++$i], next if ($arg eq '--force');
+
+    #$username = $arg, next if (not defined $username);
+    #$subject = $arg, next if (not defined $subject);
+    #$text = $arg, next if (not defined $text);
     #etc.
+
+    print("Unknown argument \"$arg\".\n");
 }
 
 my @planfiles = get_planfiles($plandir);
