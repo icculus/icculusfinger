@@ -29,6 +29,7 @@
 #          changed \r and \n in protocol chatter to \015 and \012.
 #          Made syslogging optional.
 #          Added "root" as a fakeuser.
+#  2.0.2 : Added "time" and "ipaddr" fakeusers.
 #-----------------------------------------------------------------------------
 
 # TODO: Let [img] tags nest inside [link] tags.
@@ -40,7 +41,7 @@ use warnings;  # don't touch this line, either.
 use DBI;       # or this. I guess. Maybe.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.0beta1";
+my $version = "v2.0.2";
 
 
 #-----------------------------------------------------------------------------#
@@ -212,6 +213,21 @@ $fakeusers{'root'} = sub {
     return("ph34r me, for i am root. I'm l33t as kittens.");
 };
 
+$fakeusers{'time'} = sub {
+    return("At the sound of the beep, it will be: " . scalar localtime() .
+           "\012\012\012\012    ...[b][i][u]BEEP.[/u][/i][/b]");
+};
+
+
+# This works if run from qmail's tcp-env, and not tcpd.
+#  also note that this is pretty useless for hits through the web 
+#  interface, since the webserver's IP will be reported, not the
+#  browser's IP.
+if (defined $ENV{'TCPREMOTEIP'}) {
+    $fakeusers{'ipaddr'} = sub {
+        return("Your IP address appears to be $ENV{'TCPREMOTEIP'}");
+    };
+}
 
 #-----------------------------------------------------------------------------#
 #     The rest is probably okay without you laying yer dirty mits on it.      #
