@@ -25,6 +25,7 @@
 #  2.0.0 : Rewrite into an actual finger daemon. MILLIONS of changes.
 #  2.0.1 : Fixed &gt; and &lt; conversion.
 #          MUCH better Lynx support (thanks, Chunky_Ks)
+#          Added an "embed" arg.
 #-----------------------------------------------------------------------------
 
 # TODO: Let [img] tags nest inside [link] tags.
@@ -217,6 +218,7 @@ my $archive_date = undef;
 my $archive_time = undef;
 my $list_sections = 0;
 my $list_archives = 0;
+my $embed = 0;
 
 my $did_output_start = 0;
 sub output_start {
@@ -226,7 +228,7 @@ sub output_start {
 
     $did_output_start = 1;
 
-    print <<__EOF__;
+    print <<__EOF__ if not $embed;
 
 <html>
   <head>
@@ -248,6 +250,8 @@ sub output_ending {
     if (($is_web_interface) or ($do_html_formatting) and ($browser !~ /Lynx/)) {
         print("    </pre>\n");
     }
+
+    return if $embed;
 
     if ($do_html_formatting) {
         print <<__EOF__;
@@ -316,6 +320,10 @@ sub parse_args {
 
     if ($args =~ s/(\A|&)listarchives=(.*?)(&|\Z)/$1/) {
         $list_archives = $2;
+    }
+
+    if ($args =~ s/(\A|&)embed=(.*?)(&|\Z)/$1/) {
+        $embed = $2;
     }
 
     return($args);
@@ -665,7 +673,8 @@ sub do_fingering {
     }
 
     if ($do_html_formatting and ($browser =~ /Lynx/)) {
-	# !!! FIXME: executable regexp suck.
+	# !!! FIXME: executable regexps suck.
+	# !!! FIXME: This doesn't work very well.
 	1 while ($output_text =~ s/^( +)/"&nbsp;" x length($1)/mse);
         1 while ($output_text =~ s/\r//s);
         1 while ($output_text =~ s/\n/<br>/s);
