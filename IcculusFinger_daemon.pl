@@ -41,9 +41,9 @@
 # !!! TODO: Make [center] tags attempt to format plain text.
 
 
-use strict;    # don't touch this line, nootch.
-use warnings;  # don't touch this line, either.
-use DBI;       # or this. I guess. Maybe.
+use strict;      # don't touch this line, nootch.
+use warnings;    # don't touch this line, either.
+use DBI;         # or this. I guess. Maybe.
 
 # Version of IcculusFinger. Change this if you are forking the code.
 my $version = "v2.0.5";
@@ -62,6 +62,12 @@ my $host = 'icculus.org';
 # This is the URL for fingering accounts, for when we need to generate
 #  URLs. "$url?user=$user&section=sectionname".
 my $base_url = 'http://icculus.org/cgi-bin/finger/finger.pl';
+
+# The processes path is replaced with this string, for security reasons, and
+#  to satisfy the requirements of Taint mode. Make this as simple as possible.
+#  Currently, the only thing that uses the PATH environment var is the
+#  "fortune" fakeuser, which can be safely removed.
+my $safe_path = '/usr/bin:/usr/local/bin';
 
 # Turn the process into a daemon. This will handle creating/answering socket
 #  connections, and forking off children to handle them. This flag can be
@@ -93,7 +99,18 @@ my $wanted_gid = 971;   # (This is the gid of "iccfinger" ON _MY_ SYSTEM.)
 #  clients will be made to wait until some of the current requests are
 #  serviced. 5 to 10 is usually a good number. Set it higher if you get a
 #  massive amount of finger requests simultaneously.
-my $max_connects = 5;
+my $max_connects = 10;
+
+# This is how long, in seconds, before an idle connection will be summarily
+#  dropped. This prevents abuse from people hogging a connection without
+#  actually sending a request, without this, enough connections like this
+#  will block legitimate ones. At worst, they can only block for this long
+#  before being booted and thus freeing their connection slot for the next
+#  guy in line. Setting this to undef lets people sit forever, but removes
+#  reliance on the IO::Select package. Note that this timeout is how long
+#  they user has to complete the read_request() function, so don't set it so
+#  low that legitimate lag can kill them. The default is usually safe.
+my $read_timeout = 15;
 
 # Set this to non-zero to log all finger requests via the standard Unix
 #  syslog facility (requires Sys::Syslog qw(:DEFAULT setlogsock) ...)
@@ -134,7 +151,7 @@ my $max_plan_size = (100 * 1024);
 # This is the maximum size, in bytes, that a finger request can be. This is
 #  to prevent malicious finger clients from trying to fill all of system
 #  memory.
-my $max_request_size = 1024;
+my $max_request_size = 512;
 
 # This is what is reported to the finger client if the desired user's planfile
 #  is missing or empty, or the user is unknown (we make NO distinction, for
@@ -853,37 +870,63 @@ sub do_fingering {
 
 
 sub read_request {
-    my $ch;
-    my $count;
     my $retval = '';
+    my $count = 0;
+    my $s = undef;
+    my $elapsed = undef;
+    my $starttime = undef;
 
-    for ($count = 0; $count < $max_request_size; $count++) {
-        # !!! FIXME: A timeout would be great, here.
-        $ch = getc(STDIN);
+    if (defined $read_timeout) {
+        $s = new IO::Select();
+        $s->add(fileno(STDIN));
+        $starttime = time();
+        $elapsed = 0;
+    }
+
+    while (1) {
+        if (defined $read_timeout) {
+            my $ready = scalar($s->can_read($read_timeout - $elapsed));
+            return undef if (not $ready);
+            $elapsed = (time() - $starttime);
+        }
+
+        my $ch;
+        my $rc = sysread(STDIN, $ch, 1);
+        return undef if ($rc != 1);
         if ($ch ne "\015") {
-            last if (($ch eq '') or ($ch eq "\012"));
+            return($retval) if (($ch eq '') or ($ch eq "\012"));
             $retval .= $ch;
+            $count++;
+            return($retval) if ($count >= $max_request_size);
         }
     }
 
-    return($retval);
+    return(undef);  # shouldn't ever hit this.
 }
 
 
 sub finger_mainline {
     my $query_string = read_request();
 
-    if ($use_syslog) {
-        syslog("info", "finger request: \"$query_string\"\n")
-            or die("Couldn't write to syslog: $!\n");
-    }
+    my $syslog_text;
+    if (not defined $query_string) {
+        $syslog_text = "input timeout on finger request. Dropped client.\n";
+        print($syslog_text);  # tell the client, if they care.
+        syslog("info", $syslog_text) if ($use_syslog);
+    } else {
+        $syslog_text = "finger request: \"$query_string\"\n";
+        if ($use_syslog) {
+            syslog("info", $syslog_text) or
+                 die("Couldn't write to syslog: $!\n");
+        }
 
-    my ($user, $args) = $query_string =~ /\A(.*?)(\?.*|\b)\Z/;
-    $user =~ tr/A-Z/a-z/ if defined $user;
-    $args = parse_args($args);
+        my ($user, $args) = $query_string =~ /\A(.*?)(\?.*|\b)\Z/;
+        $user =~ tr/A-Z/a-z/ if defined $user;
+        $args = parse_args($args);
 
-    if (verify_and_load_request($args, $user)) {
-        do_fingering($query_string, $user)
+        if (verify_and_load_request($args, $user)) {
+            do_fingering($query_string, $user)
+        }
     }
 
     return(0);
@@ -912,13 +955,17 @@ sub go_to_background {
 
 sub drop_privileges {
     delete @ENV{qw(IFS CDPATH ENV BASH_ENV)};
-    $ENV{'PATH'} = '/usr/bin:/usr/local/bin';
+    $ENV{'PATH'} = $safe_path;
     $) = $wanted_gid if (defined $wanted_gid);
     $> = $wanted_uid if (defined $wanted_uid);
 }
 
 
 # Mainline.
+
+if (defined $read_timeout) {
+    use IO::Select;
+}
 
 foreach (@ARGV) {
     $daemonize = 1, next if $_ eq '--daemonize';
@@ -942,9 +989,9 @@ if (not $daemonize) {
 } else {
     go_to_background();
 
-    # clean up zombies from future forks...
-    use POSIX ":sys_wait_h";
-    $SIG{CHLD} = sub { 1 until (waitpid(-1, WNOHANG) == -1); };
+    # reap zombies from client forks...
+    my $total_kids = 0;
+    $SIG{CHLD} = sub { wait(); $total_kids--; };
 
     use IO::Socket::INET;
     my $listensock = IO::Socket::INET->new(LocalPort => $server_port,
@@ -958,6 +1005,9 @@ if (not $daemonize) {
 
     while (1)
     {
+        # prevent connection floods.
+        sleep(1) while ($total_kids >= $max_connects);
+
         my $client = $listensock->accept();
         syslog_and_die("accept() failed: $!") if (not $client);
 
@@ -969,21 +1019,22 @@ if (not $daemonize) {
         my $kidpid = fork();
         syslog_and_die("fork() failed: $!") if (not defined $kidpid);
 
-        if ($kidpid == 0) {  # this is the child process.
-            close($listensock);   # no need for listen socket in child.
+        if ($kidpid) {  # this is the parent process.
+            close($client);  # parent has no use for client socket.
+            $total_kids++;
+        } else {
+            close($listensock);   # child has no use for listen socket.
             local *FH = $client;
             open(STDIN, "<&FH") or syslog_and_die("no STDIN reassign: $!");
             open(STDERR, ">&FH") or syslog_and_die("no STDERR reassign: $!");
             open(STDOUT, ">&FH") or syslog_and_die("no STDOUT reassign: $!");
             my $retval = finger_mainline();
             close($client);
-            exit $retval;
+            exit $retval;  # kill child.
         }
-
-        close($client);  # parent has no use for this socket.
     }
 
-    close($listensock);  # probably won't ever hit this.
+    close($listensock);  # shouldn't ever hit this.
 }
 
 exit $retval;
