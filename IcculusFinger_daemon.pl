@@ -337,8 +337,6 @@ sub parse_args {
 
 
 sub get_database_link {
-    return("Planfile archives are disabled.") if not $use_database;
-
     if (not defined $dbpass) {
         if (defined $dbpassfile) {
             open(FH, $dbpassfile) or return("failed to open $dbpassfile: $!\n");
@@ -500,9 +498,9 @@ sub verify_and_load_request {
         if (defined $fakeusers{$user}) {
             $output_text = $fakeusers{$user}->();
         }
-	elsif ($list_archives) {
+        elsif ($list_archives) {
             $errormsg = load_archive_list($user);
-	}
+        }
         elsif ((defined $archive_date) or (defined $archive_time)) {
             $errormsg = load_archive($user);
         } else {
@@ -679,9 +677,9 @@ sub do_fingering {
     }
 
     if ($do_html_formatting and ($browser =~ /Lynx/)) {
-	# !!! FIXME: executable regexps suck.
-	# !!! FIXME: This doesn't work very well.
-	1 while ($output_text =~ s/^( +)/"&nbsp;" x length($1)/mse);
+        # !!! FIXME: executable regexps suck.
+        # !!! FIXME: This doesn't work very well.
+        1 while ($output_text =~ s/^( +)/"&nbsp;" x length($1)/mse);
         1 while ($output_text =~ s/\r//s);
         1 while ($output_text =~ s/\n/<br>/s);
     }
@@ -738,8 +736,9 @@ sub read_request {
     my $retval = '';
 
     for ($count = 0; $count < $max_request_size; $count++) {
+        # !!! FIXME: A timeout would be great, here.
         $ch = getc(STDIN);
-	if ($ch ne "\015") {
+        if ($ch ne "\015") {
             last if (($ch eq '') or ($ch eq "\012"));
             $retval .= $ch;
         }
@@ -758,7 +757,7 @@ if ($use_syslog) {
     setlogsock("unix");
     openlog("fingerd", "user") or die("Couldn't open syslog: $!\n");
     syslog("info", "finger request: \"$query_string\"\n")
-	or die("Couldn't write to syslog: $!\n");
+        or die("Couldn't write to syslog: $!\n");
 }
 
 my ($user, $args) = $query_string =~ /\A(.*?)(\?.*|\b)\Z/;
