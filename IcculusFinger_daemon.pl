@@ -39,7 +39,8 @@
 #  2.0.6 : Some syslogging added, minor fix in input reading.
 #          Zombie processes are cleaned up reliably, even under heavy load.
 #  2.1.0 : Added .planfile digest generation. Not hooked up to daemon yet,
-#          just works from the command line.
+#          just works from the command line. (Thanks to Gary "Chunky Kibbles"
+#          Briggs for the suggestion and patches!)
 #-----------------------------------------------------------------------------
 
 # !!! TODO: Let [img] tags nest inside [link] tags.
@@ -310,6 +311,11 @@ $fakeusers{'time'} = sub {
            "\012\012\012\012    ...[b][i][u]BEEP.[/u][/i][/b]");
 };
 
+$fakeusers{'admin-forcedigest'} = sub {
+    do_digest();
+    return('Digest dumped, nootch.');
+};
+
 
 # This works if run from qmail's tcp-env, and not tcpd.
 #  also note that this is pretty useless for hits through the web
@@ -362,6 +368,18 @@ sub get_sqldate {
 }
 
 
+sub get_minimal_sqldate {
+    my $mtime = shift;
+    my @t = localtime($mtime);
+    $t[4] = "00" . ($t[4] + 1);
+    $t[4] =~ s/.*?(\d\d)\Z/$1/;
+    $t[3] = "00" . $t[3];
+    $t[3] =~ s/.*?(\d\d)\Z/$1/;
+
+    return('' . ($t[4]) . '/' . ($t[3]) );
+}
+
+
 sub enumerate_planfiles {
     my $dirname = (($use_homedir) ? '/home' : $fingerspace);
     opendir(DIRH, $dirname) or return(undef);
@@ -403,7 +421,9 @@ sub do_digest {
     }
 
     print DIGESTH $digest_prepend if defined $digest_prepend;
-    print DIGESTH "\n<p>\n  <ul>\n";
+    print DIGESTH "\n<p>\n ";
+
+    print DIGESTH "<table border=1>\n";
 
     foreach (@plans) {
         my $user = $_;
@@ -417,12 +437,15 @@ sub do_digest {
         my $filesize = $statbuf[7];
         next if ($filesize <= 0);  # Skip empty .plans
 
-        my $modtime = get_sqldate($statbuf[9]);
+        my $modtime = get_minimal_sqldate($statbuf[9]);
         my $href = "href=\"$base_url?user=$user\"";
-        print DIGESTH "    <li><a $href>$user</a> (last updated: $modtime)\n";
+        print DIGESTH " <tr>\n";
+        print DIGESTH "  <td><a $href>$user</a></td>\n";
+        print DIGESTH "  <td>$modtime</td>\n";
+        print DIGESTH " </tr>\n";
     }
 
-    print DIGESTH "  </ul>\n</p>\n";
+    print DIGESTH "  </table>\n</p>\n";
     print DIGESTH $digest_append if defined $digest_append;
     close(DIGESTH);
 }
