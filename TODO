@@ -1,0 +1,3 @@
+- Move all these config variables to an external file that gets included (or
+  parsed?) at runtime. Consolidate variables.
+
