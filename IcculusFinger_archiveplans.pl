@@ -41,6 +41,23 @@ my $plandir = '/fingerspace';
 my $dbhost = 'localhost';
 my $dbuser = 'fingermgr';
 
+# This is the maximum amount of data that IcculusFinger will read from a
+#  planfile. If this cuts off in the middle of an opened formatting tag,
+#  tough luck. IcculusFinger reads the entire planfile (up to the max you
+#  specify here) into memory before processing tags. Theoretically, this could
+#  be changed to handle tags on the fly, in which case users that would
+#  otherwise be over the limit might not be after processing sections, etc,
+#  but this is not the case here and now.
+#  Note that images specified inside [img] tags, etc are not counted towards
+#  this limit (since the web browser would be requesting those images
+#  separately), and only applies to the max bytes to be read directly from the
+#  planfile. This is merely here to prevent someone from symlinking their
+#  planfile to /dev/zero or something that could fill all available memory.
+#  This value is specified in bytes. Data read from the database has no
+#  limit, but theoretically, if it had to pass through this script to get into
+#  the database, this is a practical limit for that, too.
+my $max_plan_size = (100 * 1024);
+
 # The password can be entered in three ways: Either hardcode it into $dbpass,
 #  (which is a security risk, but is faster if you have a completely closed
 #  system), or leave $dbpass set to undef, in which case this script will try
@@ -140,9 +157,9 @@ sub read_plantext {
     my $filename = shift;
     my $retval = '';
 
-    open(PLAN_IN, $filename) or die("Can't open $filename: $!\n");
-    while (<PLAN_IN>) {
-        $retval .= $_;
+    open(PLAN_IN, '<', $filename) or die("Can't open $filename: $!\n");
+    if (not defined read(PLAN_IN, $retval, $max_plan_size)) {
+        die("Couldn't read planfile: $!");
     }
     close(PLAN_IN);
 
