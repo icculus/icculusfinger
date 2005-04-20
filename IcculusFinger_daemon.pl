@@ -66,7 +66,9 @@
 #  2.1.11: Changes by Gary Briggs: Fixed div tag placement in $embed
 #          and plaintext
 #  2.1.12: Minor RDF fixes.
-#  2.1.12: RDF output now works with Thunderbird.
+#  2.1.13: RDF output now works with Thunderbird.
+#  2.1.14: Compliments of zakk, finger pages now list a "live bookmark" for
+#          RSS finger digest.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -79,7 +81,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.13";
+my $version = "v2.1.14";
 
 
 #-----------------------------------------------------------------------------#
@@ -627,11 +629,17 @@ sub output_start {
 
     $did_output_start = 1;
 
+    my $rssdigest = '';
+    if ((defined $digest_rss_title) and (defined $digest_rss_about)) {
+        $rssdigest = "<link rel=\"alternate\" title=\"$digest_rss_title\" href=\"$digest_rss_about\" type=\"application/rss+xml\">";
+    }
+
     print <<__EOF__ if not $embed;
 
 <html>
   <head>
     <title> $title </title>
+    $rssdigest
 __EOF__
 
 	print "<link rel=\"stylesheet\" href=\"$style\"
