@@ -703,6 +703,7 @@ __EOF__
 	my $maxlength = (defined $revision) ? length($revision) : 0;
 	$maxlength = length($text_credits) if(length($text_credits)>$maxlength);
 	$maxlength = length($wittyremark) if(length($wittyremark)>$maxlength);
+        print "\n";
         print "-" x $maxlength . "\n";
         print "$revision\n" if (defined $revision);
         print ".plan archives for this user: finger $user?listarchives=1\@$host\n";
