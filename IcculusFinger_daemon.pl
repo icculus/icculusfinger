@@ -69,6 +69,9 @@
 #  2.1.13: RDF output now works with Thunderbird.
 #  2.1.14: Compliments of zakk, finger pages now list a "live bookmark" for
 #          RSS finger digest.
+#  2.1.15: Plain text output fixes: listarchives now right, and removed
+#          extra newlines from footer.
+#          Added info on how to access this user's .plan archives.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -81,7 +84,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.14";
+my $version = "v2.1.15";
 
 
 #-----------------------------------------------------------------------------#
@@ -663,7 +666,7 @@ __EOF__
 
 
 sub output_ending {
-
+    my ($user, $host) = @_;
     if (($is_web_interface) or ($do_html_formatting) and ($browser !~ /Lynx/)) {
         print("    </pre>\n");
     }
@@ -687,6 +690,7 @@ sub output_ending {
     <center>
       <font size="-3">
         $revision
+        .plan archives for this user are <a href="$base_url?user=$user&listarchives=1">here</a>.<br>
         $html_credits<br>
         <i>$wittyremark</i>
       </font>
@@ -695,13 +699,13 @@ sub output_ending {
 __EOF__
 
     } else {
-	$revision = ((defined $revision) ? "$revision\n" : '');
 	# Perl has no builtin max
-	my $maxlength = length($revision);
+	my $maxlength = (defined $revision) ? length($revision) : 0;
 	$maxlength = length($text_credits) if(length($text_credits)>$maxlength);
 	$maxlength = length($wittyremark) if(length($wittyremark)>$maxlength);
         print "-" x $maxlength . "\n";
         print "$revision\n" if (defined $revision);
+        print ".plan archives for this user: finger $user?listarchives=1\@$host\n";
         print "$text_credits\n";
         print "$wittyremark\n\n";
     }
@@ -821,7 +825,7 @@ sub load_archive_list {
                 my $url = "$base_url?user=$user&date=$d&time=$t";
                 $output_text .= "  \[link=\"$url\"\]$_\[/link\]\n";
             } else {
-                $output_text .= "  finger $user\@$host?&date=$d&time=$t\n";
+                $output_text .= "  finger '$user?date=$d&time=$t\@$host'\n";
             }
         }
     }
@@ -963,7 +967,7 @@ sub verify_and_load_request {
         print "$errormsg";
         print "</h1></center>" if $do_html_formatting;
         print "\n";
-        output_ending();
+        output_ending($user, $host);
         return(0);
     }
 
@@ -1240,7 +1244,7 @@ sub do_fingering {
 
     output_start($user, $host);
     print("$output_text\n");
-    output_ending();
+    output_ending($user, $host);
 }
 
 
