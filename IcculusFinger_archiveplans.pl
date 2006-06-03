@@ -183,8 +183,7 @@ sub read_plantext {
     }
     close(PLAN_IN);
 
-    # Add two newlines...prevents perl/mysql confusion for some reason.
-    return($retval . "\n\n");
+    return($retval);
 }
 
 
