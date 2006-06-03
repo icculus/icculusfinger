@@ -183,7 +183,8 @@ sub read_plantext {
     }
     close(PLAN_IN);
 
-    return($retval);
+    # Add two newlines...prevents perl/mysql confusion for some reason.
+    return($retval . "\n\n");
 }
 
 
@@ -222,6 +223,7 @@ sub update_planfile {
         $sth->execute() or die "can't execute the query: $sth->errstr";
 
         my @row = $sth->fetchrow_array();
+        $sth->finish();
         if (not @row) {
             print("   Don't seem to have a previous entry ...\n") if $debug;
             if ( (stat($filename))[7] == 0 ) {
@@ -232,6 +234,8 @@ sub update_planfile {
             my $t = time();
             if ($t < $modtime) {
                 print("   WARNING: file timestamp is in the future!\n") if $debug;
+                `touch -c -m '$filename'`;  # force to now, retest next time for content change.
+                return;
             } else {
                 if ( ($t - $modtime) < ($update_delay * 60) ) {
                     if ($debug) {
@@ -246,29 +250,25 @@ sub update_planfile {
             if ($debug) {
                 my $x = $row[0];
                 print("   dates: [$x] [$fdate]\n");
-            }
+            } 
 
-            if ($row[0] gt $fdate) {
-                print("   WARNING: archive timestamp is newer than .plan!\n") if $debug;
-                return;
-            } elsif ($row[0] eq $fdate) {
+            if ($row[0] eq $fdate) {
                 print("   Matches archive timestamp. Skipping.\n") if $debug;
                 return;
             } else {
                 $plantext = read_plantext($link, $filename);
                 my $plancpy = $plantext;
     	        # Ditch [noarchive][/noarchive] tag blocks and strcmp rest.
-    	        1 while ($row[1] =~ s/\[noarchive].*?\[\/noarchive\]//is);
-    	        1 while ($plancpy =~ s/\[noarchive].*?\[\/noarchive\]//is);
+    	        1 while ($row[1] =~ s/\[noarchive\].*?\[\/noarchive\]//is);
+    	        1 while ($plancpy =~ s/\[noarchive\].*?\[\/noarchive\]//is);
                 if ($row[1] ne $plancpy) {
-    		        print("   Newer revision needs archiving.\n") if $debug;
+    	            print("   Newer revision needs archiving.\n") if $debug;
     	        } else {
-    		        print("   Newer revision only changed [noarchive] section(s). Skipping.\n") if ($debug);
+    	            print("   Newer revision only changed [noarchive] section(s). Skipping.\n") if ($debug);
                     return;
     	        }
     	    }
         }
-        $sth->finish();
     }
 
     $plantext = read_plantext($link, $filename) if (not defined $plantext);
