@@ -248,7 +248,10 @@ sub update_planfile {
                 print("   dates: [$x] [$fdate]\n");
             }
 
-            if ($row[0] eq $fdate) {
+            if ($row[0] gt $fdate) {
+                print("   WARNING: archive timestamp is newer than .plan!\n") if $debug;
+                return;
+            } elsif ($row[0] eq $fdate) {
                 print("   Matches archive timestamp. Skipping.\n") if $debug;
                 return;
             } else {
