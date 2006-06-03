@@ -128,7 +128,7 @@ sub run_external_updater {
 sub enumerate_planfiles {
     my $dirname = (($use_homedir) ? '/home' : $fingerspace);
     opendir(DIRH, $dirname) or return(undef);
-    my @dirents = readdir(DIRH);
+    my @dirents = sort readdir(DIRH);
     closedir(DIRH);
 
     my @retval;
