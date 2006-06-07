@@ -60,7 +60,7 @@ if ((not defined $ENV{GATEWAY_INTERFACE}) or ($ENV{GATEWAY_INTERFACE} eq '')) {
     exit 0;
 }
 
-print("Content-type: text/html\n\n\n");
+print("Content-type: text/html; charset=UTF-8\n\n\n");
 
 if ((defined $ENV{HTTP_USER_AGENT}) and ($ENV{HTTP_USER_AGENT} ne "")) {
     if (not $web_query =~ /(\A|\?|&)browser=/) {
