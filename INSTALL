@@ -102,13 +102,13 @@ config variable at the top of a few of them that specifies this).
 
 Type:
 
-    mysql> create table finger_archive (
-             id int not null auto_increment,
-             username varchar(32) not null,
-             postdate datetime not null,
-             text text not null,
-             primary key (id)
-           );
+  mysql> create table finger_archive (
+           id int not null auto_increment,
+           username varchar(32) not null,
+           postdate datetime not null,
+           text mediumtext character set utf8 COLLATE utf8_general_ci not null,
+           primary key (id)
+         );
 
 Next, create the MySQL user for the IcculusFinger database. You can call this
 user any name and give this user any password you want, just make sure that
