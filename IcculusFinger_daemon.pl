@@ -72,6 +72,7 @@
 #  2.1.15: Plain text output fixes: listarchives now right, and removed
 #          extra newlines from footer.
 #          Added info on how to access this user's .plan archives.
+#  2.1.16: [img] tags in plain text output use the link digest, too.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -84,7 +85,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.15";
+my $version = "v2.1.16";
 
 
 #-----------------------------------------------------------------------------#
@@ -979,6 +980,7 @@ sub verify_and_load_request {
 sub do_fingering {
     my ($query_string, $user) = @_;
     my @link_digest;
+    my $linkcount = $#link_digest + 2;  # start at one.
 
     if ($debug) {
         $title = "debugging...";
@@ -1092,10 +1094,9 @@ sub do_fingering {
     if ($do_html_formatting) {
         1 while ($output_text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/<a href=\"$1\">$2<\/a>/is);
     } elsif ($do_link_digest) {
-        my $x = $#link_digest + 2;  # start at one.
-        while ($output_text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/$2 \[$x\]/is) {
+        while ($output_text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/$2 \[$linkcount\]/is) {
             push @link_digest, $1;
-            $x++;
+            $linkcount++;
         }
     } else {  # ugly-ass text output.
         1 while ($output_text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/$2 \[$1\]/is);
@@ -1104,7 +1105,12 @@ sub do_fingering {
     # Change [img][/img] tags.
     if ($do_html_formatting) {
         1 while ($output_text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/<img src=\"$1\" alt=\"$2\" border=\"0\">/is);
-    } else {
+    } elsif ($do_link_digest) {
+        while ($output_text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/$2 \[$linkcount\]/is) {
+            push @link_digest, $1;
+            $linkcount++;
+        }
+    } else {  # ugly-ass text output.
         1 while ($output_text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/$2\n\[$1\]/is);
     }
 
