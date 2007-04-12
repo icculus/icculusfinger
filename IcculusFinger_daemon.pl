@@ -73,6 +73,7 @@
 #          extra newlines from footer.
 #          Added info on how to access this user's .plan archives.
 #  2.1.16: [img] tags in plain text output use the link digest, too.
+#  2.1.17: Added <pubDate> tags to RSS feed.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -85,7 +86,7 @@ use File::Basename;  # blow.
 use IO::Select;      # bleh.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.16";
+my $version = "v2.1.17";
 
 
 #-----------------------------------------------------------------------------#
@@ -561,6 +562,13 @@ sub do_digest {
 }
 
 
+sub pubdate {
+    my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = @_;
+    return POSIX::strftime("%a, %e %b %Y %H:%M:%S %z", $sec, $min, $hour,
+                           $mday, $mon, $year, $wday, $yday, $isdst);
+}
+
+
 sub do_rss_digest {
     return if not defined $digest_rss_filename;
 
@@ -574,17 +582,20 @@ sub do_rss_digest {
         return;
     }
 
+    my $pubdate = pubdate(localtime(time()));
     my $rdfitems = "\n";
     my $digestitems = '';
     my $x = 0;
     foreach (reverse sort keys %plansdates) {
         my $user = $plansdates{$_};
         my $modtime = get_minimal_sqldate($_);
+        my $itempubdate = pubdate(localtime($_));
         my $href = "$base_url?user=$user";
         $rdfitems .= "        <rdf:li rdf:resource=\"$href\" />\n";
         $digestitems .= "  <item rdf:about=\"$href\">\n";
         $digestitems .= "    <title>$user - $modtime</title>\n";
         $digestitems .= "    <link>$href</link>\n";
+        $digestitems .= "    <pubDate>$itempubdate</pubDate>\n";
         $digestitems .= "    <description>.plan update from $user</description>\n";
         $digestitems .= "  </item>\n\n";
 
@@ -604,6 +615,7 @@ sub do_rss_digest {
     <link>$digest_rss_url</link>
     <description>$digest_rss_desc</description>
     <image rdf:resource="$digest_rss_image" />
+    <pubDate>$pubdate</pubDate>
     <items>
       <rdf:Seq>$rdfitems      </rdf:Seq>
     </items>
