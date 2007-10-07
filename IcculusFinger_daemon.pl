@@ -334,7 +334,7 @@ my $oneuser_rss_items = 5;
 
 # Most RSS items to list for specific users' feeds. This is a clamp, in case
 #  there are more specified in the URL.
-my $max_oneuser_rss_items = 50;
+my $max_oneuser_rss_items = 20;
 
 # Filename to write finger digest to. "undef" will universally disable digest
 #  generation, from the daemon or command line. Note that this file is opened
@@ -908,6 +908,12 @@ sub output_oneuser_rss {
 
         $wanted_section = undef;   # global that gets set in do_fingering() and elsewhere...
         $output_text = $row[1];
+
+        # Might need to add this back in someday...
+        #if (length($output_text) >= 5*1024) {
+        #    $output_text = substr($row[1],0,5*1024) . " ...\n";
+        #}
+
         do_fingering('[unavailable for RSS feed generation]', $user, 1);
 
         # $output_text now holds HTML-formatted .planfile, for embedding in
