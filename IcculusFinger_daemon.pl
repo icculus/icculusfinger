@@ -75,6 +75,7 @@
 #  2.1.16: [img] tags in plain text output use the link digest, too.
 #  2.1.17: Added <pubDate> tags to RSS feed.
 #  2.1.18: HTML img tag puts alt text in "title" attribute, too, for mouseovers.
+#  2.1.19: Allow per-user RSS feeds.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -85,9 +86,10 @@ use warnings;        # don't touch this line, either.
 use DBI;             # or this. I guess. Maybe.
 use File::Basename;  # blow.
 use IO::Select;      # bleh.
+use POSIX;           # bloop.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.18";
+my $version = "v2.1.19";
 
 
 #-----------------------------------------------------------------------------#
@@ -327,6 +329,13 @@ my $digest_frequency = 10;
 #my $digest_max_users = undef;
 my $digest_max_users = 10;
 
+# Default count of items in a specific user's RSS feed.
+my $oneuser_rss_items = 5;
+
+# Most RSS items to list for specific users' feeds. This is a clamp, in case
+#  there are more specified in the URL.
+my $max_oneuser_rss_items = 50;
+
 # Filename to write finger digest to. "undef" will universally disable digest
 #  generation, from the daemon or command line. Note that this file is opened
 #  for writing _AFTER_ the program drops privileges, whether you run this from
@@ -336,6 +345,8 @@ my $digest_filename = '/webspace/icculus.org/fingerdigest.html';
 # Filename to write finger digest RSS to, "undef" will universally
 # disable RSS digest generation, from the daemon or the command line. See
 # other notes above.
+# This is for RSS feeds for all users. Individual users still get their
+# own personal feeds (with the &rss=1 arg on the URL.)
 my $digest_rss_filename = '/webspace/icculus.org/fingerdigest.rdf';
 
 # Set this to a string you want to prepend to the finger digest. If you
@@ -424,7 +435,7 @@ $fakeusers{'ipaddr'} = sub {
 #-----------------------------------------------------------------------------#
 
 my $is_web_interface = 0;
-my $do_html_formatting = 0;
+my $do_html_formatting = undef;
 my $browser = "";
 my $wanted_section = undef;
 my $output_text = "";
@@ -434,6 +445,7 @@ my $list_sections = 0;
 my $list_archives = 0;
 my $embed = 0;
 my $do_link_digest = undef;
+my $do_oneuser_rss = 0;
 my $next_plan_digest = 0;
 
 
@@ -642,13 +654,15 @@ my $did_output_start = 0;
 sub output_start {
     my ($user, $host) = @_;
     return if ((not $is_web_interface) and (not $do_html_formatting));
+    return if $do_oneuser_rss;
     return if $did_output_start;
 
     $did_output_start = 1;
 
     my $rssdigest = '';
     if ((defined $digest_rss_title) and (defined $digest_rss_about)) {
-        $rssdigest = "<link rel=\"alternate\" title=\"$digest_rss_title\" href=\"$digest_rss_about\" type=\"application/rss+xml\">";
+        $rssdigest = "<link rel=\"alternate\" title=\"Finger updates from $user\@$host\" href=\"$base_url?user=$user&rss=1\" type=\"application/rss+xml\" />    \n" .
+                     "<link rel=\"alternate\" title=\"$digest_rss_title\" href=\"$digest_rss_about\" type=\"application/rss+xml\" />\n";
     }
 
     print <<__EOF__ if not $embed;
@@ -660,7 +674,7 @@ sub output_start {
 __EOF__
 
 	print "<link rel=\"stylesheet\" href=\"$style\"
-		type=\"text/css\">" if(defined $style && length($style) > 0);
+		type=\"text/css\" />" if(defined $style && length($style) > 0);
 
     print <<__EOF__ if not $embed;
   </head>
@@ -673,13 +687,14 @@ __EOF__
  
 __EOF__
 
-   print "<div class=\"content\">";
-
+    print "<div class=\"content\">";
     print "\n<pre>\n" if ($browser !~ /Lynx/);
 }
 
 
 sub output_ending {
+    return if $do_oneuser_rss;
+
     my ($user, $host) = @_;
     if (($is_web_interface) or ($do_html_formatting) and ($browser !~ /Lynx/)) {
         print("    </pre>\n");
@@ -704,7 +719,7 @@ sub output_ending {
     <center>
       <font size="-3">
         $revision
-        .plan archives for this user are <a href="$base_url?user=$user&listarchives=1">here</a>.<br>
+        .plan archives for this user are <a href="$base_url?user=$user&listarchives=1">here</a> (RSS <a href="$base_url?user=$user&rss=1">here</a>).<br>
         $html_credits<br>
         <i>$wittyremark</i>
       </font>
@@ -743,6 +758,17 @@ sub parse_args {
 
         if ($args =~ s/(\A|&)html=(.*?)(&|\Z)/$1/) {
             $do_html_formatting = $2;
+        }
+
+        if ($args =~ s/(\A|&)rss=(.*?)(&|\Z)/$1/) {
+            $do_oneuser_rss = $2;
+        }
+
+        if ($args =~ s/(\A|&)rssitems=(.*?)(&|\Z)/$1/) {
+            $oneuser_rss_items = $2;
+            if ($oneuser_rss_items > $max_oneuser_rss_items) {
+                $oneuser_rss_items = $max_oneuser_rss_items;
+            }
         }
 
         if ($args =~ s/(\A|&)browser=(.*?)(&|\Z)/$1/) {
@@ -784,6 +810,7 @@ sub parse_args {
     }
 
     # default behaviours that depend on output target...
+    $do_html_formatting = $do_oneuser_rss if (not defined $do_html_formatting);
     $do_link_digest = !$do_html_formatting if (not defined $do_link_digest);
 
     return($args);
@@ -847,6 +874,98 @@ sub load_archive_list {
 
     $sth->finish();
     $link->disconnect();
+    return(undef);
+}
+
+
+sub output_oneuser_rss {
+    my $user = shift;
+    my $link;
+    my $err = get_database_link($link);
+    return($err) if defined $err;
+
+    my $u = $link->quote($user);
+    my $sql = "select postdate, text from $dbtable_archive where username=$u" .
+              " order by postdate desc limit $oneuser_rss_items";
+    my $sth = $link->prepare($sql);
+    if (not $sth->execute()) {
+        $link->disconnect();
+        return "can't execute the query: $sth->errstr";
+    }
+
+    my $oneuser_rss_url = "$base_url?user=$user&amp;rss=1";
+    my $oneuser_rss_title = "Finger updates from $user\@$host";
+    my $pubDate = pubdate(localtime(time()));
+    my $rdfitems = "\n";
+    my $digestitems = '';
+    my $x = 0;
+    while (my @row = $sth->fetchrow_array()) {
+        my $dateandtime = $row[0];
+        my ($d, $t) = ($dateandtime =~ /(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d)/);
+        my ($hour, $min, $sec) = ($t =~ /(..):(..):(..)/);
+        my ($year, $mon, $day) = ($d =~ /(\d\d\d\d)-(\d\d)-(\d\d)/);
+        my $unixtime = POSIX::mktime($sec, $min, $hour, $day, $mon-1, $year-1900, 0, 0);
+
+        $wanted_section = undef;   # global that gets set in do_fingering() and elsewhere...
+        $output_text = $row[1];
+        do_fingering('[unavailable for RSS feed generation]', $user, 1);
+
+        # $output_text now holds HTML-formatted .planfile, for embedding in
+        #  the RSS feed. Now you need to encode it further, so HTML tags, etc
+        #  don't screw with the container tags.
+        $output_text = "\n<pre>\n$output_text</pre>\n";
+        1 while ($output_text =~ s/(?<!">)\&(?!amp)/&amp;/s);
+        1 while ($output_text =~ s/</&lt;/s);
+        1 while ($output_text =~ s/>/&gt;/s);
+
+        my @pubtime = localtime($unixtime);
+        $pubtime[2] = $hour;  # workaround to make times match. Probably not the right way.
+        my $itempubdate = pubdate(@pubtime);
+        my $href = "$base_url?user=$user&amp;date=$d&amp;time=$hour-$min-$sec";
+        $rdfitems .= "        <rdf:li rdf:resource=\"$href\" />\n";
+        $digestitems .= "  <item rdf:about=\"$href\">\n";
+        $digestitems .= "    <title>.plan update from $user, $dateandtime</title>\n";
+        $digestitems .= "    <link>$href</link>\n";
+        $digestitems .= "    <pubDate>$itempubdate</pubDate>\n";
+        $digestitems .= "    <description>$output_text</description>\n";
+        $digestitems .= "  </item>\n\n";
+    }
+
+    $output_text = '';  # This is a global, so reset it just in case...
+
+    $sth->finish();
+    $link->disconnect();
+
+    print <<__EOF__;
+<?xml version="1.0" encoding="utf-8"?>
+
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns="http://purl.org/rss/1.0/"
+>
+
+  <channel rdf:about="$oneuser_rss_url">
+    <title>$oneuser_rss_title</title>
+    <link>$base_url?user=$user</link>
+    <description>$digest_rss_title</description>
+    <image rdf:resource="$digest_rss_image" />
+    <pubDate>$pubDate</pubDate>
+    <items>
+      <rdf:Seq>$rdfitems      </rdf:Seq>
+    </items>
+  </channel>
+
+  <image>
+    <title>$oneuser_rss_title</title>
+    <url>$digest_rss_image</url>
+    <link>$oneuser_rss_url</link>
+  </image>
+
+$digestitems
+</rdf:RDF>
+
+
+__EOF__
+
     return(undef);
 }
 
@@ -966,6 +1085,10 @@ sub verify_and_load_request {
         if (defined $fakeusers{$user}) {
             $output_text = $fakeusers{$user}->();
         }
+        elsif ($do_oneuser_rss) {
+            output_oneuser_rss($user);
+            return(0);  # no further processing.
+        }
         elsif ($list_archives) {
             $errormsg = load_archive_list($user);
         }
@@ -991,7 +1114,7 @@ sub verify_and_load_request {
 
 
 sub do_fingering {
-    my ($query_string, $user) = @_;
+    my ($query_string, $user, $block_output) = @_;
     my @link_digest;
     my $linkcount = $#link_digest + 2;  # start at one.
 
@@ -1006,6 +1129,7 @@ sub do_fingering {
         print("Browser: $browser ...\n");
         print("Embedding: $embed ...\n");
         print("Doing link digest: $do_link_digest ...\n");
+        print("Doing one user's RSS: $do_oneuser_rss ...\n");
     }
 
     if ((not defined $output_text) or ($output_text eq "")) {
@@ -1263,7 +1387,7 @@ sub do_fingering {
     1 while ($output_text =~ s/\r+\Z//s);  # Remove trailing newlines.
 
     output_start($user, $host);
-    print("$output_text\n");
+    print("$output_text\n") if (not $block_output);
     output_ending($user, $host);
 }
 
@@ -1325,7 +1449,7 @@ sub finger_mainline {
         $args = parse_args($args);
 
         if (verify_and_load_request($args, $user)) {
-            do_fingering($query_string, $user)
+            do_fingering($query_string, $user, 0)
         }
     }
 

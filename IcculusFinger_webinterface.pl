@@ -45,13 +45,14 @@ my $host = $ENV{SERVER_NAME};  # This is good for VirtualHost setups.
 $host =~ tr/A-Z/a-z/ if defined $host;
 
 my $user = '';
+my $rss = 0;
 my $finger_query = 'web=1';
 my $web_query = $ENV{QUERY_STRING};
 $web_query = '' if (not defined $web_query);
 chomp($web_query);
 
-if ($web_query =~ s/user=(.*?)(\Z|&)//) {
-    $user = $1;
+if ($web_query =~ s/(\?|&|\A)user=(.*?)(\Z|&)//) {
+    $user = $2;
     $user =~ tr/A-Z/a-z/;
 }
 
@@ -59,8 +60,6 @@ if ((not defined $ENV{GATEWAY_INTERFACE}) or ($ENV{GATEWAY_INTERFACE} eq '')) {
     print("\n\nThis is a cgi-bin script. Please treat it accordingly.\n\n");
     exit 0;
 }
-
-print("Content-type: text/html; charset=UTF-8\n\n\n");
 
 if ((defined $ENV{HTTP_USER_AGENT}) and ($ENV{HTTP_USER_AGENT} ne "")) {
     if (not $web_query =~ /(\A|\?|&)browser=/) {
@@ -72,6 +71,10 @@ if ((defined $ENV{HTTP_USER_AGENT}) and ($ENV{HTTP_USER_AGENT} ne "")) {
 
 if (not $web_query =~ /(\A|\?|&)html=/) {
     $finger_query .= "&html=1";
+}
+
+if ($web_query =~ /(\A|\?|&)rss=/) {
+    $rss = 1;
 }
 
 my $requested_host = undef;
@@ -104,6 +107,13 @@ if ($user eq '') {
     } else {
         $remote->autoflush(1);
         print $remote "$finger_query\015\012";
+
+        if ($rss) {
+            print("Content-type: application/xhtml+xml; charset=UTF-8\n\n");
+        } else {
+            print("Content-type: text/html; charset=UTF-8\n\n");
+        }
+
         while (<$remote>) {
             print $_;
         }
@@ -112,6 +122,7 @@ if ($user eq '') {
 }
 
 if (defined $errormsg) {
+    print("Content-type: text/html; charset=UTF-8\n\n");
     print("<html><head><title>Problem</title></head><body>\n");
     print("<center><h1>$errormsg</h1></center>\n");
     print("</body></html>\n");
