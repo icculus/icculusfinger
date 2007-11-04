@@ -76,6 +76,7 @@
 #  2.1.17: Added <pubDate> tags to RSS feed.
 #  2.1.18: HTML img tag puts alt text in "title" attribute, too, for mouseovers.
 #  2.1.19: Allow per-user RSS feeds.
+#  2.1.20: RSS fixes.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -89,7 +90,7 @@ use IO::Select;      # bleh.
 use POSIX;           # bloop.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.19";
+my $version = "v2.1.20";
 
 
 #-----------------------------------------------------------------------------#
@@ -1002,7 +1003,7 @@ sub load_archive {
         if ($archive_time =~ /\A(\d\d)-(\d\d)-(\d\d)\Z/) {
             $sqldate .= " $1:$2:$3";
         } else {
-            return("Archive date must be in hh-mm-ss format.");
+            return("Archive time must be in hh-mm-ss format.");
         }
     } else {
         $sqldate .= " 23:59:59";  # end of day.
