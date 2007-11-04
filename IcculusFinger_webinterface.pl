@@ -109,7 +109,7 @@ if ($user eq '') {
         print $remote "$finger_query\015\012";
 
         if ($rss) {
-            print("Content-type: application/xhtml+xml; charset=UTF-8\n\n");
+            print("Content-type: application/rss+xml; charset=UTF-8\n\n");
         } else {
             print("Content-type: text/html; charset=UTF-8\n\n");
         }
