@@ -85,6 +85,7 @@ my $newspassfile = '/etc/IcculusFinger_newspass.txt';
 #-----------------------------------------------------------------------------#
 
 my $force_archive = undef;
+my $replace_archive = 0;
 
 sub run_external_updater {
     my $u = shift;
@@ -207,9 +208,11 @@ sub update_planfile {
         $user = basename($filename);
     }
 
+    my $replace = 0;
     if ((defined $force_archive) and ($force_archive eq $user)) {
         print(" * Forcing archival of $user\'s .planfile...\n") if $debug;
         $user = $link->quote($user);
+        $replace = $replace_archive;
     } else {
         print(" * Examining $user\'s .planfile (modtime $fdate)...\n") if $debug;
 
@@ -272,8 +275,33 @@ sub update_planfile {
 
     $plantext = read_plantext($link, $filename) if (not defined $plantext);
     my $ftext = $link->quote($plantext);
-    $sql = "insert into $dbtable_archive (username, postdate, text)" .
-           " values ($user, '$fdate', $ftext)";
+
+    my $lastpost = undef;
+    if ($replace) {
+        # ... get date of the latest archived .plan ...
+        $sql = "select postdate from $dbtable_archive where username=$user" .
+               " order by postdate desc limit 1";
+        my $sth = $link->prepare($sql);
+        $sth->execute() or die "can't execute the query: $sth->errstr";
+
+        my @row = $sth->fetchrow_array();
+        $sth->finish();
+        if (not @row) {
+            $replace = 0;  # no previous entry.
+        } else {
+            $lastpost = $row[0];
+        }
+    }
+
+    if ($replace) {
+        $sql = "update $dbtable_archive set text=$ftext" .
+               " where $user=$user and postdate='$lastpost'";
+        $lastpost =~ s/\d\d\d\d\-(\d\d)-(\d\d) (\d\d)\:(\d\d)\:(\d\d)/$1$2$3$4.$5/;
+        `touch -c -m -t '$lastpost' '$filename'`;  # force file to this date.
+    } else {
+        $sql = "insert into $dbtable_archive (username, postdate, text)" .
+               " values ($user, '$fdate', $ftext)";
+    }
 
     $link->do($sql) or die "can't execute the query: $link->errstr";
     print("   Revision added to archives.\n") if $debug;
@@ -287,6 +315,7 @@ sub update_planfile {
 for (my $i = 0; $i < scalar(@ARGV); $i++) {
     my $arg = $ARGV[$i];
     $debug = 1, next if ($arg eq '--debug');
+    $replace_archive = 1, next if ($arg eq '--replace');
     $force_archive = $ARGV[++$i], next if ($arg eq '--force');
 
     #$username = $arg, next if (not defined $username);
@@ -295,6 +324,10 @@ for (my $i = 0; $i < scalar(@ARGV); $i++) {
     #etc.
 
     print("Unknown argument \"$arg\".\n");
+}
+
+if (($replace_archive) and (not defined $force_archive)) {
+    die("--replace without --force")
 }
 
 my @planfiles = enumerate_planfiles();
