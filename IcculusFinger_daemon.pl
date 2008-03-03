@@ -77,6 +77,7 @@
 #  2.1.18: HTML img tag puts alt text in "title" attribute, too, for mouseovers.
 #  2.1.19: Allow per-user RSS feeds.
 #  2.1.20: RSS fixes.
+#  2.1.21: Fixed "finger @hostname" uninitialized variable (thanks, Thomas!).
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -90,7 +91,7 @@ use IO::Select;      # bleh.
 use POSIX;           # bloop.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = "v2.1.20";
+my $version = 'v2.1.21';
 
 
 #-----------------------------------------------------------------------------#
@@ -714,13 +715,18 @@ sub output_ending {
     if ($do_html_formatting) {
         $revision = ((defined $revision) ? "$revision<br>\n" : '');
 
+    my $archivestext = '';
+    if (defined $user) {
+        $archivestext = ".plan archives for this user are <a href='$base_url?user=$user&listarchives=1'>here</a> (RSS <a href='$base_url?user=$user&rss=1'>here</a>).<br>";
+    }
+
         print <<__EOF__;
     <div class="bottom">
     <hr>
     <center>
       <font size="-3">
         $revision
-        .plan archives for this user are <a href="$base_url?user=$user&listarchives=1">here</a> (RSS <a href="$base_url?user=$user&rss=1">here</a>).<br>
+        $archivestext
         $html_credits<br>
         <i>$wittyremark</i>
       </font>
@@ -736,7 +742,7 @@ __EOF__
         print "\n";
         print "-" x $maxlength . "\n";
         print "$revision\n" if (defined $revision);
-        print ".plan archives for this user: finger $user?listarchives=1\@$host\n";
+        print ".plan archives for this user: finger $user?listarchives=1\@$host\n" if (defined $user);
         print "$text_credits\n";
         print "$wittyremark\n\n";
     }
