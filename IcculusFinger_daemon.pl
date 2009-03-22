@@ -78,6 +78,7 @@
 #  2.1.19: Allow per-user RSS feeds.
 #  2.1.20: RSS fixes.
 #  2.1.21: Fixed "finger @hostname" uninitialized variable (thanks, Thomas!).
+#  2.1.22: Fixed non-html listsections output.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -91,7 +92,7 @@ use IO::Select;      # bleh.
 use POSIX;           # bloop.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = 'v2.1.21';
+my $version = 'v2.1.22';
 
 
 #-----------------------------------------------------------------------------#
@@ -1179,7 +1180,7 @@ sub do_fingering {
             }
         } else {
             foreach (@sectionlist) {
-                $output_text .= "  finger $user\@$host?section=$_\n";
+                $output_text .= "  finger $user?section=$_\@$host\n";
             }
         }
     }
