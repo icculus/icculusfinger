@@ -79,6 +79,7 @@
 #  2.1.20: RSS fixes.
 #  2.1.21: Fixed "finger @hostname" uninitialized variable (thanks, Thomas!).
 #  2.1.22: Fixed non-html listsections output.
+#  2.1.23: URL detection tweak.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -92,7 +93,7 @@ use IO::Select;      # bleh.
 use POSIX;           # bloop.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = 'v2.1.22';
+my $version = 'v2.1.23';
 
 
 #-----------------------------------------------------------------------------#
@@ -1270,7 +1271,7 @@ sub do_fingering {
 
     if ($do_html_formatting) {
         # try to make URLs into hyperlinks in the HTML output.
-        1 while ($output_text =~ s/(?<!href=")(?<!src=")(?<!">)\b([a-zA-Z]+?:\/\/[-~=\w&\.\/?]+)/<a href="$1">$1<\/a>/);
+        1 while ($output_text =~ s/(?<!href=")(?<!src=")(?<!">)\b([a-zA-Z]+?:\/\/[-~=\w&\.\/?:]+)/<a href="$1">$1<\/a>/);
 
         # try to make email addresses into hyperlinks in the HTML output.
         # !!! FIXME: broken.
