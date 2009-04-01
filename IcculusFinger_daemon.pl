@@ -397,6 +397,10 @@ my %fakeusers;  # the hash has to exist; don't comment this line.
 
 # The elements of the hash, however, can be added and removed at your whim.
 
+$fakeusers{'adsense'} = sub {
+    return("April Fools, beeyotch!\n");
+};
+
 $fakeusers{'fortune'} = sub {
     return(`/usr/games/fortune`);
 };
@@ -788,6 +792,8 @@ sub parse_args {
             $debug = $2;
         }
 
+        if ($args =~ s/(\A|&)advertid=(.*?)(&|\Z)/$1/) {}
+
         if ($args =~ s/(\A|&)section=(.*?)(&|\Z)/$1/) {
             $wanted_section = $2;
             $wanted_section =~ tr/A-Z/a-z/;
@@ -1075,6 +1081,64 @@ sub load_file {
     return($errormsg);
 }
 
+sub adsense_text {
+# !!! FIXME: This is not what perl meant when it said "there's more than one way to do it."
+    my $randnum = int(rand(99999999));
+    my $url = 
+"|  finger adsense?advertid=$randnum\@icculus.org    |\n";
+
+    my @ads = ( 
+"|  Looking for hot local LUG chicks?               |\n" .
+"|  Put on your wizard hat and robe!                |\n" ,
+
+"|  vi vs emacs                                     |\n" .
+"|  You have questions, we have answers.            |\n" ,
+
+"|  A better Quake 3 Arena                          |\n" .
+"|  ioquake3, now available for your wristwatch!    |\n" ,
+
+"|  Does your woman this?                           |\n" .
+"|  8================>                              |\n" .
+"|  But all you have is this?                       |\n" .
+"|  8==>                                            |\n" .
+"|  Click here!                                     |\n" ,
+
+"|  Unreal Tournament 3 for Linux, OSX, BeOS        |\n" .
+"|  Click here!                                     |\n" ,
+
+"|  I'm Bob Saget, bitch.                           |\n" .
+"|  You better ax someone!!1                        |\n" ,
+
+"|  Juegos Por Linux                                |\n" .
+"|  Unreal Tournamente Tres                         |\n" .
+"|  Click Here!                                     |\n" ,
+
+"|  Are you a time-traveller like me?               |\n" .
+"|  I'm looking for fellow time-travellers.         |\n" ,
+
+"|  Aliens Versus Predator                          |\n" .
+"|  Open-Source w/Mutli-Player! Click Here!         |\n" ,
+
+"|  Unreal Tournament 3 for Linux and OS X          |\n" .
+"|  Using Transgaming!                              |\n" ,
+
+"|  Find Zen in Linux                               |\n" .
+"|  Compromise some principles                      |\n" .
+"|  Buy Nvidia!                                     |\n" .
+"|    ... haiku is hard...                          |\n" ,
+
+"|  Will hack for food.                             |\n" .
+"|  Seriously, AdSense ain't covering the rent.     |\n" ,
+);
+
+    my $adoutput = "[center]\n" .
+                   "/**************************************************\\\n" .
+                   $ads[int(rand($#ads + 1))] .
+                   $url .
+                   "\\*********************************Ads by Gooogle***/\n" .
+                   "[/center]\n\n\n";
+    return $adoutput;
+}
 
 sub verify_and_load_request {
     my ($args, $user) = @_;
@@ -1123,6 +1187,8 @@ sub verify_and_load_request {
         output_ending($user, $host);
         return(0);
     }
+
+    $output_text = adsense_text() . $output_text;
 
     return(1);
 }
