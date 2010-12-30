@@ -80,6 +80,7 @@
 #  2.1.21: Fixed "finger @hostname" uninitialized variable (thanks, Thomas!).
 #  2.1.22: Fixed non-html listsections output.
 #  2.1.23: URL detection tweak.
+#  2.1.24: double-fork when daemonizing, to totally lose controlling terminal.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -93,7 +94,7 @@ use IO::Select;      # bleh.
 use POSIX;           # bloop.
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = 'v2.1.23';
+my $version = 'v2.1.24';
 
 
 #-----------------------------------------------------------------------------#
@@ -1482,13 +1483,18 @@ sub syslog_and_die {
 
 sub go_to_background {
     use POSIX 'setsid';
-    chdir('/') or syslog_and_die("Can't chdir to '/': $!");
     open STDIN,'/dev/null' or syslog_and_die("Can't read '/dev/null': $!");
     open STDOUT,'>/dev/null' or syslog_and_die("Can't write '/dev/null': $!");
+    # fork once, so launching process regains control.
     defined(my $pid=fork) or syslog_and_die("Can't fork: $!");
     exit if $pid;
+    # become session group leader, so we have no controlling terminal.
     setsid or syslog_and_die("Can't start new session: $!");
+    # fork again; group leader (and chance of controlling terminal) vanishes.
+    defined($pid=fork) or syslog_and_die("Can't fork: $!");
+    exit if $pid;
     open STDERR,'>&STDOUT' or syslog_and_die("Can't duplicate stdout: $!");
+    chdir('/') or syslog_and_die("Can't chdir to '/': $!");
     syslog("info", "Daemon process is now detached") if ($use_syslog);
 }
 
