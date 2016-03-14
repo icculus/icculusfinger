@@ -87,6 +87,28 @@ my $newspassfile = '/etc/IcculusFinger_newspass.txt';
 my $force_archive = undef;
 my $replace_archive = 0;
 
+sub strip_tags {
+    my $t = shift;
+    1 while ($t =~ s/\&(?!amp)/&amp;/s);
+    1 while ($t =~ s/</&lt;/s);
+    1 while ($t =~ s/>/&gt;/s);
+    1 while ($t =~ s/\[title\](.*?)\[\/title\](\n|\r\n|\b)//is);
+    1 while ($t =~ s/\[wittyremark\](.*?)\[\/wittyremark\](\n|\r\n|\b)//is);
+    1 while ($t =~ s/\[b\](.*?)\[\/b\]/<b>$1<\/b>/is);
+    1 while ($t =~ s/\[u\](.*?)\[\/u\]/<u>$1<\/u>/is);
+    1 while ($t =~ s/\[i\](.*?)\[\/i\]/<i>$1<\/i>/is);
+    1 while ($t =~ s/\[center\](.*?)\[\/center\]/<center>$1<\/center>/is);
+    1 while ($t =~ s/\[img=(".*?")\].*?\[\/img\]/<img src=$1>/is);
+    1 while ($t =~ s/\[link=(".*?")\](.*?)\[\/link\]/<a href=$1>$2<\/a>/is);
+    1 while ($t =~ s/\[defaultsection=".*?"\](\n|\r\n|\b)//is);
+    1 while ($t =~ s/\[section=".*?"\](\n|\r\n|\b)(.*?)\[\/section\](\n|\r\n|\b)/$2/is);
+    1 while ($t =~ s/\[font(.*?)\](.*?)\[\/font\]/<font $1>$2<\/font>/is);
+    1 while ($t =~ s/\[noarchive\](.*?)\[\/noarchive\]/$1/is);
+    1 while ($t =~ s/\[markdown\](.*?)\[\/markdown\]/$1/is);
+    1 while ($t =~ s/\[metadata=\].*?\[\/metadata\]//is);
+    return $t;
+}
+
 sub run_external_updater {
     my $u = shift;
     my $d = shift;
@@ -94,23 +116,7 @@ sub run_external_updater {
 
     if ($post_to_icculusnews) {
         print("   posting to IcculusNews's submission queue...\n") if $debug;
-        1 while ($t =~ s/\&(?!amp)/&amp;/s);
-        1 while ($t =~ s/</&lt;/s);
-        1 while ($t =~ s/>/&gt;/s);
-        1 while ($t =~ s/\[title\](.*?)\[\/title\](\n|\r\n|\b)//is);
-        1 while ($t =~ s/\[wittyremark\](.*?)\[\/wittyremark\](\n|\r\n|\b)//is);
-        1 while ($t =~ s/\[b\](.*?)\[\/b\]/<b>$1<\/b>/is);
-        1 while ($t =~ s/\[u\](.*?)\[\/u\]/<u>$1<\/u>/is);
-        1 while ($t =~ s/\[i\](.*?)\[\/i\]/<i>$1<\/i>/is);
-        1 while ($t =~ s/\[center\](.*?)\[\/center\]/<center>$1<\/center>/is);
-        1 while ($t =~ s/\[img=(".*?")\].*?\[\/img\]/<img src=$1>/is);
-        1 while ($t =~ s/\[link=(".*?")\](.*?)\[\/link\]/<a href=$1>$2<\/a>/is);
-        1 while ($t =~ s/\[defaultsection=".*?"\](\n|\r\n|\b)//is);
-        1 while ($t =~ s/\[section=".*?"\](\n|\r\n|\b)(.*?)\[\/section\](\n|\r\n|\b)/$2/is);
-        1 while ($t =~ s/\[font(.*?)\](.*?)\[\/font\]/<font $1>$2<\/font>/is);
-        1 while ($t =~ s/\[noarchive\](.*?)\[\/noarchive\]/$1/is);
-        1 while ($t =~ s/\[markdown\](.*?)\[\/markdown\]/$1/is);
-
+        $t = strip_tags($t);
         print("   parsed markup tags...\n") if $debug;
         my $newssubj = "Notable .plan update from $u";
         $ENV{'ICCNEWS_POST_PASS'} = $newspass if defined $newspass;
@@ -275,6 +281,55 @@ sub update_planfile {
     }
 
     $plantext = read_plantext($link, $filename) if (not defined $plantext);
+
+    my $metadatastr = $plantext;
+    my %metadata = ();
+    1 while ($metadatastr =~ s/\r\n/\n/s);
+    1 while ($metadatastr =~ s/\r/\n/s);
+    while ($metadatastr =~ s/\[metadata=\"(.*?)\"\](\n|\b)(.*?)\[\/metadata\](\n|\b)//) {
+        my $k = $1;
+        my $v = $3;
+        $k =~ tr/A-Z/a-z/;
+        $metadata{$k} = $v;
+    }
+
+    my $summary = $metadata{'summary'};
+    if (not defined $summary) {
+        my $str = $metadatastr;
+        1 while ($str =~ s/\[title\](.*?)\[\/title\](\n|\r\n|\b)//is);
+        1 while ($str =~ s/\[wittyremark\](.*?)\[\/wittyremark\](\n|\r\n|\b)//is);
+        1 while ($str =~ s/\[b\](.*?)\[\/b\]/$1/is);
+        1 while ($str =~ s/\[u\](.*?)\[\/u\]/$1/is);
+        1 while ($str =~ s/\[i\](.*?)\[\/i\]/$1/is);
+        1 while ($str =~ s/\[center\](.*?)\[\/center\]/$1/is);
+        1 while ($str =~ s/\[img=(".*?")\].*?\[\/img\]//is);
+        1 while ($str =~ s/\[link=(".*?")\](.*?)\[\/link\]/$2/is);
+        1 while ($str =~ s/\[defaultsection=".*?"\](\n|\r\n|\b)//is);
+        1 while ($str =~ s/\[section=".*?"\](\n|\r\n|\b)(.*?)\[\/section\](\n|\r\n|\b)/$2/is);
+        1 while ($str =~ s/\[font(.*?)\](.*?)\[\/font\]/$2/is);
+        1 while ($str =~ s/\[noarchive\](.*?)\[\/noarchive\]/$1/is);
+        1 while ($str =~ s/\[markdown\](.*?)\[\/markdown\]/$1/is);
+        1 while ($str =~ s/\[metadata=".*?"\](\n|\r\n|\b).*?\[\/metadata\](\n|\r\n|\b)//is);
+
+        $str =~ s/\A\s+//;
+        $str =~ s/\s+\Z//;
+        $str =~ s/\A(.*?)[\r\n].*\Z/$1/s;
+
+        $str =~ s/\A\s+//;
+        $str =~ s/\s+\Z//;
+
+        $summary = $str;
+    }
+
+    1 while ($summary =~ s/\r\n/ /s);
+    1 while ($summary =~ s/\r/ /s);
+    1 while ($summary =~ s/\n/ /s);
+    if (length($summary) > 80) {
+        $summary =~ s/\A(.{15,}?[.?!])(.*?)\Z/$1/;  # gross.
+    }
+
+    $summary = $link->quote($summary);
+
     my $ftext = $link->quote($plantext);
 
     my $lastpost = undef;
@@ -295,13 +350,13 @@ sub update_planfile {
     }
 
     if ($replace) {
-        $sql = "update $dbtable_archive set text=$ftext" .
+        $sql = "update $dbtable_archive set text=$ftext, summary=$summary" .
                " where $user=$user and postdate='$lastpost'";
         $lastpost =~ s/\d\d\d\d\-(\d\d)-(\d\d) (\d\d)\:(\d\d)\:(\d\d)/$1$2$3$4.$5/;
         `touch -c -m -t '$lastpost' '$filename'`;  # force file to this date.
     } else {
-        $sql = "insert into $dbtable_archive (username, postdate, text)" .
-               " values ($user, '$fdate', $ftext)";
+        $sql = "insert into $dbtable_archive (username, postdate, summary, text)" .
+               " values ($user, '$fdate', $summary, $ftext)";
     }
 
     $link->do($sql) or die "can't execute the query: $link->errstr";

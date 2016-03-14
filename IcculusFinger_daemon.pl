@@ -84,6 +84,7 @@
 #  2.1.25: IPv6 support, use https:// URLs where appropriate.
 #  2.1.26: Added Markdown support, removed <pre> tags and workarounds for it.
 #          A few other output fixes.
+#  2.1.27: Added metadata support for Twitter Cards and summaries.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -99,7 +100,7 @@ use Text::Markdown 'markdown';
 
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = 'v2.1.26';
+my $version = 'v2.1.27';
 
 
 #-----------------------------------------------------------------------------#
@@ -659,6 +660,9 @@ __EOF__
     close(RSS_DIGESTH);
 }
 
+my $linkcount = 0;
+my @link_digest;
+my %metadata;
 
 my $did_output_start = 0;
 sub output_start {
@@ -675,12 +679,23 @@ sub output_start {
                      "<link rel=\"alternate\" title=\"$digest_rss_title\" href=\"$digest_rss_about\" type=\"application/rss+xml\" />\n";
     }
 
+    my $twitter = '';
+    if (defined $metadata{'twitter'}) {
+        my $uname = $metadata{'twitter'};
+        my $summary = $metadata{'summary'};
+        $twitter .= "<meta name='twitter:card' content='summary' />\n";
+        $twitter .= "<meta name='twitter:site' content='\@$uname' />\n";
+        $twitter .= "<meta name='twitter:title content='$title' />\n";
+        $twitter .= "<meta name='twitter:description' content='$summary' />\n";
+    }
+
     print <<__EOF__ if not $embed;
 
 <html>
   <head>
     <title> $title </title>
     $rssdigest
+    $twitter
 __EOF__
 
 	print "<link rel=\"stylesheet\" href=\"$style\"
@@ -854,7 +869,7 @@ sub load_archive_list {
     return($err) if defined $err;
 
     my $u = $link->quote($user);
-    my $sql = "select postdate from $dbtable_archive where username=$u" .
+    my $sql = "select postdate, summary from $dbtable_archive where username=$u" .
               " order by postdate desc";
     my $sth = $link->prepare($sql);
     if (not $sth->execute()) {
@@ -862,29 +877,30 @@ sub load_archive_list {
         return "can't execute the query: $sth->errstr";
     }
 
-    my @archivelist;
+    $output_text = "Available archives:\n";
+    my $had_archives = 0;
     while (my @row = $sth->fetchrow_array()) {
-        push @archivelist, $row[0];
-    }
-
-    if ($#archivelist < 0) {
-        $output_text = '';  # will use $no_report_string.
-    } else {
-        $output_text = "Available archives:\n";
-        foreach (@archivelist) {
-            my ($d, $t) = /(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d)/;
-            $t =~ s/(..):(..):(..)/$1-$2-$3/;
-            if ($do_html_formatting) {
-                my $url = "$base_url?user=$user&date=$d&time=$t";
-                $output_text .= "  \[link=\"$url\"\]$_\[/link\]\n";
-            } else {
-                $output_text .= "  finger '$user?date=$d&time=$t\@$host'\n";
-            }
+        my ($dt, $summary) = @row;
+        my ($d, $t) = $dt =~ /(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d)/;
+        $t =~ s/(..):(..):(..)/$1-$2-$3/;
+        if ($do_html_formatting) {
+            my $url = "$base_url?user=$user&date=$d&time=$t";
+            $summary = " -- $summary" if ($summary ne '');
+            $output_text .= "  \[link=\"$url\"\]$dt\[/link\]$summary\n";
+        } else {
+            $summary = " # $summary" if ($summary ne '');
+            $output_text .= "  finger '$user?date=$d&time=$t\@$host'$summary\n";
         }
+        $had_archives = 1;
     }
 
     $sth->finish();
     $link->disconnect();
+
+    if (not $had_archives) {
+        $output_text = '';  # will use $no_report_string.
+    }
+
     return(undef);
 }
 
@@ -1128,9 +1144,6 @@ sub verify_and_load_request {
     return(1);
 }
 
-my $linkcount = 0;
-my @link_digest;
-
 sub process_tags {
     my $text = shift;
 
@@ -1253,7 +1266,11 @@ sub process_tags {
 
 sub do_fingering {
     my ($query_string, $user, $block_output) = @_;
+
+    my $orig_text = $output_text;
+
     @link_digest = ();
+    %metadata = ();
     $linkcount = $#link_digest + 2;  # start at one.
     
     if ($debug) {
@@ -1278,6 +1295,9 @@ sub do_fingering {
     1 while ($output_text =~ s/\r\n/\n/s);
     1 while ($output_text =~ s/\r/\n/s);
 
+    # !!! FIXME: need to handle these in process_tags() so we ignore them
+    # !!! FIXME:  inside [markdown] blocks.
+
     # Change [style][/style] tags.
     while ($output_text =~ s/\[style\](.*?)\[\/style\](\n|\b)//is) {
         push @style_array, $1 if $permit_user_styles;
@@ -1291,6 +1311,14 @@ sub do_fingering {
     # Change [wittyremark][/wittyremark] tags.
     while ($output_text =~ s/\[wittyremark\](.*?)\[\/wittyremark\](\n|\b)//is) {
         push @wittyremark_array, $1 if $permit_user_wittyremarks;
+    }
+
+    # Change [metadata][/metadata] tags.
+    while ($output_text =~ s/\[metadata=\"(.*?)\"\](\n|\b)(.*?)\[\/metadata\](\n|\b)//) {
+        my $k = $1;
+        my $v = $3;
+        $k =~ tr/A-Z/a-z/;
+        $metadata{$k} = $v;
     }
 
     # !!! FIXME: Make this a separate subroutine?
@@ -1339,6 +1367,7 @@ sub do_fingering {
     $final .= process_tags($output_text);
     $output_text = $final;
 
+    # Pick a random title...
     if ($#title_array >= 0) {
         $title = $title_array[int(rand($#title_array + 1))];
     }
@@ -1353,7 +1382,38 @@ sub do_fingering {
         $wittyremark = $wittyremark_array[int(rand($#wittyremark_array + 1))];
     }
 
-    # Pick a random title...
+    if (not defined $metadata{'summary'}) {
+        my $str = $orig_text;
+        1 while ($str =~ s/\[title\](.*?)\[\/title\](\n|\r\n|\b)//is);
+        1 while ($str =~ s/\[wittyremark\](.*?)\[\/wittyremark\](\n|\r\n|\b)//is);
+        1 while ($str =~ s/\[b\](.*?)\[\/b\]/$1/is);
+        1 while ($str =~ s/\[u\](.*?)\[\/u\]/$1/is);
+        1 while ($str =~ s/\[i\](.*?)\[\/i\]/$1/is);
+        1 while ($str =~ s/\[center\](.*?)\[\/center\]/$1/is);
+        1 while ($str =~ s/\[img=(".*?")\].*?\[\/img\]//is);
+        1 while ($str =~ s/\[link=(".*?")\](.*?)\[\/link\]/$2/is);
+        1 while ($str =~ s/\[defaultsection=".*?"\](\n|\r\n|\b)//is);
+        1 while ($str =~ s/\[section=".*?"\](\n|\r\n|\b)(.*?)\[\/section\](\n|\r\n|\b)/$2/is);
+        1 while ($str =~ s/\[font(.*?)\](.*?)\[\/font\]/$2/is);
+        1 while ($str =~ s/\[noarchive\](.*?)\[\/noarchive\]/$1/is);
+        1 while ($str =~ s/\[markdown\](.*?)\[\/markdown\]/$1/is);
+        1 while ($str =~ s/\[metadata=".*?"\](\n|\r\n|\b).*?\[\/metadata\](\n|\r\n|\b)//is);
+
+        $str =~ s/\A\s+//;
+        $str =~ s/\s+\Z//;
+        $str =~ s/\A(.*?)[\r\n].*\Z/$1/s;
+        $str =~ s/\A\s+//;
+        $str =~ s/\s+\Z//;
+        $metadata{'summary'} = $str;
+    }
+
+    1 while ($metadata{'summary'} =~ s/\r\n/ /s);
+    1 while ($metadata{'summary'} =~ s/\r/ /s);
+    1 while ($metadata{'summary'} =~ s/\n/ /s);
+    if (length($metadata{'summary'}) > 80) {
+        $metadata{'summary'} =~ s/\A(.{15,}?[.?!])(.*?)\Z/$1/;  # gross.
+    }
+
     if ($debug) {
         my $x;
         $x = $#title_array + 1;
@@ -1383,7 +1443,12 @@ sub do_fingering {
         print("Chosen: [$wittyremark].\n");
 
         $x = $#link_digest + 1;
-        print("Items in link digest: $x ... \n");
+        print("Items in link digest: $x ...\n");
+
+        foreach (sort keys %metadata) {
+            my $k = $_;
+            print("metadata{'$k'} = '" . $metadata{$k} . "' ...\n");
+        }
 
         print("\n");
         print("Actual finger output begins below line...\n");
