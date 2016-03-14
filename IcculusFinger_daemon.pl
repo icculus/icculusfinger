@@ -122,7 +122,7 @@ my $safe_path = '/usr/bin:/usr/local/bin';
 #  toggled via command line options (--daemonize, --no-daemonize, -d), but
 #  this sets the default. Daemonizing tends to speed up processing (since the
 #  script stays loaded/compiled), but may cause problems on systems that
-#  don't have a functional fork() or IO::Socket::INET package. If you don't
+#  don't have a functional fork() or IO::Socket::IP package. If you don't
 #  daemonize, this program reads requests from stdin and writes results to
 #  stdout, which makes it suitable for command line use or execution from
 #  inetd and equivalents.
@@ -1592,8 +1592,9 @@ $SIG{CHLD} = \&reap_kids;
 $SIG{TERM} = \&signal_catcher;
 $SIG{INT} = \&signal_catcher;
 
-use IO::Socket::INET;
-my $listensock = IO::Socket::INET->new(LocalPort => $server_port,
+use IO::Socket::IP;
+my $listensock = IO::Socket::IP->new(LocalHost => '::',
+			               LocalPort => $server_port,
                                        Type => SOCK_STREAM,
                                        ReuseAddr => 1,
                                        Listen => $max_connects);
