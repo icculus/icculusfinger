@@ -109,7 +109,7 @@ my $host = 'icculus.org';
 
 # This is the URL for fingering accounts, for when we need to generate
 #  URLs. "$url?user=$user&section=sectionname".
-my $base_url = 'http://icculus.org/cgi-bin/finger/finger.pl';
+my $base_url = 'https://icculus.org/cgi-bin/finger/finger.pl';
 
 # The processes path is replaced with this string, for security reasons, and
 #  to satisfy the requirements of Taint mode. Make this as simple as possible.
@@ -279,7 +279,7 @@ my $debug = 0;
 #  final HTML output.
 #my $scripturl = undef;
 #my $scripturl = "/misc/finger.pl";
-my $scripturl = "http://icculus.org/IcculusFinger/";
+my $scripturl = "https://icculus.org/IcculusFinger/";
 
 # This is only used in the HTML-formatted output.
 # I'd prefer you leave this be, but change it if you must.
@@ -363,7 +363,7 @@ my $digest_prepend = "<html><head><title>.plan digest</title></head><body>\n";
 
 # Set this to a url you want to set the about to
 # for the finger digest RSS about field. Et cetera.
-my $digest_rss_about = "http://icculus.org/fingerdigest.rdf";
+my $digest_rss_about = "https://icculus.org/fingerdigest.rdf";
 
 # Set this to a title you want for the RSS
 my $digest_rss_title = "icculus.org finger digest";
@@ -371,13 +371,13 @@ my $digest_rss_title = "icculus.org finger digest";
 # Set this to the link you want for the finger digest (note that this
 # relates to the RSS file linking to the actual piece of html, not
 # itself)
-my $digest_rss_url = "http://icculus.org/fingerdigest.html";
+my $digest_rss_url = "https://icculus.org/fingerdigest.html";
 
 # Set this to the description for the RSS
 my $digest_rss_desc = "finger updates from icculus.org users";
 
 # Set this to the url for the RSS image
-my $digest_rss_image = "http://icculus.org/icculus-org-now.png";
+my $digest_rss_image = "https://icculus.org/icculus-org-now.png";
 
 # Set this to a string you want to append to the finger digest. If you
 #  aren't planning to include the digest in another webpage via PHP or
