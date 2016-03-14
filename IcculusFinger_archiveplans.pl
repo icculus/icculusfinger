@@ -109,6 +109,7 @@ sub run_external_updater {
         1 while ($t =~ s/\[section=".*?"\](\n|\r\n|\b)(.*?)\[\/section\](\n|\r\n|\b)/$2/is);
         1 while ($t =~ s/\[font(.*?)\](.*?)\[\/font\]/<font $1>$2<\/font>/is);
         1 while ($t =~ s/\[noarchive\](.*?)\[\/noarchive\]/$1/is);
+        1 while ($t =~ s/\[markdown\](.*?)\[\/markdown\]/$1/is);
 
         print("   parsed markup tags...\n") if $debug;
         my $newssubj = "Notable .plan update from $u";

@@ -1332,7 +1332,9 @@ sub do_fingering {
     # Change [markdown][/markdown] tags.
     while ($output_text =~ s/(.*?)\[markdown](.*?)\[\/markdown\]//is) {
         $final .= process_tags($1);
-        $final .= $do_html_formatting ? markdown($2) : $2;
+        my $md = $2;
+        $md =~ s/\A\n//;
+        $final .= $do_html_formatting ? markdown($md) : $md;
     }
     $final .= process_tags($output_text);
     $output_text = $final;
