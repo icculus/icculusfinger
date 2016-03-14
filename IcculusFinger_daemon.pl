@@ -82,6 +82,8 @@
 #  2.1.23: URL detection tweak.
 #  2.1.24: double-fork when daemonizing, to totally lose controlling terminal.
 #  2.1.25: IPv6 support, use https:// URLs where appropriate.
+#  2.1.26: Added Markdown support, removed <pre> tags and workarounds for it.
+#          A few other output fixes.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -93,9 +95,11 @@ use DBI;             # or this. I guess. Maybe.
 use File::Basename;  # blow.
 use IO::Select;      # bleh.
 use POSIX;           # bloop.
+use Text::Markdown 'markdown';
+
 
 # Version of IcculusFinger. Change this if you are forking the code.
-my $version = 'v2.1.25';
+my $version = 'v2.1.26';
 
 
 #-----------------------------------------------------------------------------#
@@ -694,7 +698,6 @@ __EOF__
 __EOF__
 
     print "<div class=\"content\">";
-    print "\n<pre>\n" if ($browser !~ /Lynx/);
 }
 
 
@@ -702,9 +705,6 @@ sub output_ending {
     return if $do_oneuser_rss;
 
     my ($user, $host) = @_;
-    if (($is_web_interface) or ($do_html_formatting) and ($browser !~ /Lynx/)) {
-        print("    </pre>\n");
-    }
     if (($is_web_interface) or ($do_html_formatting)) {
         print("    </div>\n");
     }
@@ -717,11 +717,11 @@ sub output_ending {
     }
 
     if ($do_html_formatting) {
-        $revision = ((defined $revision) ? "$revision<br>\n" : '');
+        $revision = ((defined $revision) ? "$revision<br/>\n" : '');
 
     my $archivestext = '';
     if (defined $user) {
-        $archivestext = ".plan archives for this user are <a href='$base_url?user=$user&listarchives=1'>here</a> (RSS <a href='$base_url?user=$user&rss=1'>here</a>).<br>";
+        $archivestext = ".plan archives for this user are <a href='$base_url?user=$user&listarchives=1'>here</a> (RSS <a href='$base_url?user=$user&rss=1'>here</a>).<br/>";
     }
 
         print <<__EOF__;
@@ -731,7 +731,7 @@ sub output_ending {
       <font size="-3">
         $revision
         $archivestext
-        $html_credits<br>
+        $html_credits<br/>
         <i>$wittyremark</i>
       </font>
     </center>
@@ -930,7 +930,7 @@ sub output_oneuser_rss {
         # $output_text now holds HTML-formatted .planfile, for embedding in
         #  the RSS feed. Now you need to encode it further, so HTML tags, etc
         #  don't screw with the container tags.
-        $output_text = "\n<pre>\n$output_text</pre>\n";
+        $output_text = "\n$output_text\n";
         1 while ($output_text =~ s/(?<!">)\&(?!amp)/&amp;/s);
         1 while ($output_text =~ s/</&lt;/s);
         1 while ($output_text =~ s/>/&gt;/s);
@@ -1128,12 +1128,134 @@ sub verify_and_load_request {
     return(1);
 }
 
+my $linkcount = 0;
+my @link_digest;
+
+sub process_tags {
+    my $text = shift;
+
+    if (($do_html_formatting) or ($is_web_interface)) {
+        # HTMLify some characters...
+        1 while ($text =~ s/</&lt;/s);
+        1 while ($text =~ s/>/&gt;/s);
+    }
+
+    # Change [entry][/entry] tags.
+    if ($do_html_formatting) {
+        1 while ($text =~ s/\[entry](.*?)\[\/entry\]/<div class="entry">$1<\/div>/is);
+    } else {
+        1 while ($text =~ s/\[entry](.*?)\[\/entry\]/$1/is);
+    }
+
+    # Change [b][/b] tags.
+    if ($do_html_formatting) {
+        1 while ($text =~ s/\[b](.*?)\[\/b\]/<b>$1<\/b>/is);
+    } else {
+        1 while ($text =~ s/\[b](.*?)\[\/b\]/\*$1\*/is);
+    }
+
+    # Change [i][/i] tags.
+    if ($do_html_formatting) {
+        1 while ($text =~ s/\[i](.*?)\[\/i\]/<i>$1<\/i>/is);
+    } else {
+        1 while ($text =~ s/\[i](.*?)\[\/i\]/\/$1\//is);
+    }
+
+    # Change [u][/u] tags.
+    if ($do_html_formatting) {
+        1 while ($text =~ s/\[u](.*?)\[\/u\]/<u>$1<\/u>/is);
+    } else {
+        1 while ($text =~ s/\[u](.*?)\[\/u\]/_$1_/is);
+    }
+
+    # Change [font][/font] tags.
+    if ($do_html_formatting) {
+        1 while ($text =~ s/\[font (.*?)](.*?)\[\/font\]/<font $1>$2<\/font>/is);
+    } else {
+        1 while ($text =~ s/\[font (.*?)](.*?)\[\/font\]/$2/is);
+    }
+
+    # Change [link][/link] tags.
+    if ($do_html_formatting) {
+        1 while ($text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/<a href=\"$1\">$2<\/a>/is);
+    } elsif ($do_link_digest) {
+        while ($text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/$2 \[$linkcount\]/is) {
+            push @link_digest, $1;
+            $linkcount++;
+        }
+    } else {  # ugly-ass text output.
+        1 while ($text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/$2 \[$1\]/is);
+    }
+
+    # Change [img][/img] tags.
+    if ($do_html_formatting) {
+        1 while ($text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/<img src=\"$1\" title=\"$2\" alt=\"$2\" border=\"0\">/is);
+    } elsif ($do_link_digest) {
+        while ($text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/$2 \[$linkcount\]/is) {
+            push @link_digest, $1;
+            $linkcount++;
+        }
+    } else {  # ugly-ass text output.
+        1 while ($text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/$2\n\[$1\]/is);
+    }
+
+    # Ditch [noarchive][/noarchive] tags ... those are metadata.
+    1 while ($text =~ s/\[noarchive](.*?)\[\/noarchive\]/$1/is);
+
+    if ($do_html_formatting) {
+        # try to make URLs into hyperlinks in the HTML output.
+        1 while ($text =~ s/(?<!href=")(?<!src=")(?<!">)\b([a-zA-Z]+?:\/\/[-~=\w&\.\/?:]+)/<a href="$1">$1<\/a>/);
+
+        # try to make email addresses into hyperlinks in the HTML output.
+        # !!! FIXME: broken.
+        #1 while ($text =~ s/\b(?<!href="mailto:)(?<!">)\b(.+?\@.+?)(\b|\.)/<a href=\"mailto:$1\">$1<\/a>/);
+    }
+
+    # this has to be done after any possible URL detection...
+    #   convert ampersands for the browser.
+    if (($do_html_formatting) or ($is_web_interface)) {
+        1 while ($text =~ s/(?<!">)\&(?!lt)(?!gt)(?!amp)/&amp;/s);
+    }
+
+    if ($do_html_formatting) {
+        #1 while ($text =~ s/^( +)/"&nbsp;" x length($1)/mse);
+
+        # The other choice being to split this puppy into two around
+        #  the spaces, and gaffer them back together with
+        #  $output_string = $1.length($2)x"&nbsp;".$3
+        #  But that's not the perl way.
+
+        1 while ($text =~ s/^ /\&nbsp;/ms);
+        1 while ($text =~ s/^(\&nbsp;)+ /$1\&nbsp;/ms);
+
+        # Convert newlines to <br/>.
+        1 while ($text =~ s/\n/<br\/>/s);
+    }
+
+    # Change [center][/center] tags.
+    if ($do_html_formatting) {
+        1 while ($text =~ s/\[center](.*?)\[\/center\]/<center>$1<\/center>/is);
+    } else {
+        while ($text =~ s/\[center](.*?)\[\/center\](.*)//si) {
+            foreach (split("\n", $1)) {
+                s/^\s*//g;
+                s/\s*$//g;
+                my $l = length($_);
+                my $centering = (($l < 80) ? ((80 - $l) / 2) : 0);
+                $text .= "\n" . (" " x $centering) . $_;
+            }
+            $text .= "\n" . $2;
+        }
+    }
+
+    return $text;
+}
 
 sub do_fingering {
     my ($query_string, $user, $block_output) = @_;
-    my @link_digest;
-    my $linkcount = $#link_digest + 2;  # start at one.
-
+    @link_digest = ();
+    $linkcount = $#link_digest + 2;  # start at one.
+    
     if ($debug) {
         $title = "debugging...";
         output_start($user, $host);
@@ -1152,25 +1274,29 @@ sub do_fingering {
         $output_text = $no_report_string;
     }
 
+    # Normalize all the newlines.
+    1 while ($output_text =~ s/\r\n/\n/s);
+    1 while ($output_text =~ s/\r/\n/s);
+
     # Change [style][/style] tags.
-    while ($output_text =~ s/\[style\](.*?)\[\/style\](\r\n|\n|\b)//is) {
+    while ($output_text =~ s/\[style\](.*?)\[\/style\](\n|\b)//is) {
         push @style_array, $1 if $permit_user_styles;
     }
 
     # Change [title][/title] tags.
-    while ($output_text =~ s/\[title\](.*?)\[\/title\](\r\n|\n|\b)//is) {
+    while ($output_text =~ s/\[title\](.*?)\[\/title\](\n|\b)//is) {
         push @title_array, $1 if $permit_user_titles;
     }
 
     # Change [wittyremark][/wittyremark] tags.
-    while ($output_text =~ s/\[wittyremark\](.*?)\[\/wittyremark\](\r\n|\n|\b)//is) {
+    while ($output_text =~ s/\[wittyremark\](.*?)\[\/wittyremark\](\n|\b)//is) {
         push @wittyremark_array, $1 if $permit_user_wittyremarks;
     }
 
     # !!! FIXME: Make this a separate subroutine?
     if ($list_sections) {
         my @sectionlist;
-        while ($output_text =~ s/\[section=\"(.*?)\"\](\r\n|\n|\b)(.*?)\[\/section\](\r\n|\n|\b)/$3/is) {
+        while ($output_text =~ s/\[section=\"(.*?)\"\](\n|\b)(.*?)\[\/section\](\n|\b)/$3/is) {
             push @sectionlist, $1;
         }
 
@@ -1188,7 +1314,7 @@ sub do_fingering {
     }
 
     # Select a section.
-    while ($output_text =~ s/\[defaultsection=\"(\w*)\"\](\r\n|\n|\b)//) {
+    while ($output_text =~ s/\[defaultsection=\"(\w*)\"\](\n|\b)//) {
         $wanted_section = $1 if (not defined $wanted_section);
     }
 
@@ -1199,136 +1325,17 @@ sub do_fingering {
             $output_text = "section \"$wanted_section\" not found.\n";
         }
     } else {
-        1 while ($output_text =~ s/\[section=\".*?\"\](.*?)\[\/section\](\r\n|\n|\b)/$1/is);
+        1 while ($output_text =~ s/\[section=\".*?\"\](.*?)\[\/section\](\n|\b)/$1/is);
     }
 
-    if (($do_html_formatting) or ($is_web_interface)) {
-        # HTMLify some characters...
-        1 while ($output_text =~ s/</&lt;/s);
-        1 while ($output_text =~ s/>/&gt;/s);
+    my $final = '';
+    # Change [markdown][/markdown] tags.
+    while ($output_text =~ s/(.*?)\[markdown](.*?)\[\/markdown\]//is) {
+        $final .= process_tags($1);
+        $final .= $do_html_formatting ? markdown($2) : $2;
     }
-
-    # Change [entry][/entry] tags.
-    if ($do_html_formatting) {
-        1 while ($output_text =~ s/\[entry](.*?)\[\/entry\]/<div class="entry">$1<\/div>/is);
-    } else {
-        1 while ($output_text =~ s/\[entry](.*?)\[\/entry\]/$1/is);
-    }
-
-    # Change [b][/b] tags.
-    if ($do_html_formatting) {
-        1 while ($output_text =~ s/\[b](.*?)\[\/b\]/<b>$1<\/b>/is);
-    } else {
-        1 while ($output_text =~ s/\[b](.*?)\[\/b\]/\*$1\*/is);
-    }
-
-    # Change [i][/i] tags.
-    if ($do_html_formatting) {
-        1 while ($output_text =~ s/\[i](.*?)\[\/i\]/<i>$1<\/i>/is);
-    } else {
-        1 while ($output_text =~ s/\[i](.*?)\[\/i\]/\/$1\//is);
-    }
-
-    # Change [u][/u] tags.
-    if ($do_html_formatting) {
-        1 while ($output_text =~ s/\[u](.*?)\[\/u\]/<u>$1<\/u>/is);
-    } else {
-        1 while ($output_text =~ s/\[u](.*?)\[\/u\]/_$1_/is);
-    }
-
-    # Change [font][/font] tags.
-    if ($do_html_formatting) {
-        1 while ($output_text =~ s/\[font (.*?)](.*?)\[\/font\]/<font $1>$2<\/font>/is);
-    } else {
-        1 while ($output_text =~ s/\[font (.*?)](.*?)\[\/font\]/$2/is);
-    }
-
-    # Change [link][/link] tags.
-    if ($do_html_formatting) {
-        1 while ($output_text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/<a href=\"$1\">$2<\/a>/is);
-    } elsif ($do_link_digest) {
-        while ($output_text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/$2 \[$linkcount\]/is) {
-            push @link_digest, $1;
-            $linkcount++;
-        }
-    } else {  # ugly-ass text output.
-        1 while ($output_text =~ s/\[link=\"(.*?)\"\](.*?)\[\/link\]/$2 \[$1\]/is);
-    }
-
-    # Change [img][/img] tags.
-    if ($do_html_formatting) {
-        1 while ($output_text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/<img src=\"$1\" title=\"$2\" alt=\"$2\" border=\"0\">/is);
-    } elsif ($do_link_digest) {
-        while ($output_text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/$2 \[$linkcount\]/is) {
-            push @link_digest, $1;
-            $linkcount++;
-        }
-    } else {  # ugly-ass text output.
-        1 while ($output_text =~ s/\[img=\"(.*?)\"\](.*?)\[\/img\]/$2\n\[$1\]/is);
-    }
-
-    # Ditch [noarchive][/noarchive] tags ... those are metadata.
-    1 while ($output_text =~ s/\[noarchive](.*?)\[\/noarchive\]/$1/is);
-
-    if ($do_html_formatting) {
-        # try to make URLs into hyperlinks in the HTML output.
-        1 while ($output_text =~ s/(?<!href=")(?<!src=")(?<!">)\b([a-zA-Z]+?:\/\/[-~=\w&\.\/?:]+)/<a href="$1">$1<\/a>/);
-
-        # try to make email addresses into hyperlinks in the HTML output.
-        # !!! FIXME: broken.
-        #1 while ($output_text =~ s/\b(?<!href="mailto:)(?<!">)\b(.+?\@.+?)(\b|\.)/<a href=\"mailto:$1\">$1<\/a>/);
-
-        # HTMLify newlines.
-        #1 while ($output_text =~ s/\r//s);
-        #1 while ($output_text =~ s/(?<!<br>)\n/<br>\n/s);
-    }
-
-    # this has to be done after any possible URL detection...
-    #   convert ampersands for the browser.
-    if (($do_html_formatting) or ($is_web_interface)) {
-        1 while ($output_text =~ s/(?<!">)\&(?!lt)(?!gt)(?!amp)/&amp;/s);
-    }
-
-    if ($do_html_formatting and ($browser =~ /Lynx/)) {
-        #1 while ($output_text =~ s/^( +)/"&nbsp;" x length($1)/mse);
-
-        # The other choice being to split this puppy into two around
-        #  the spaces, and gaffer them back together with
-        #  $output_string = $1.length($2)x"&nbsp;".$3
-        #  But that's not the perl way.
-
-        1 while ($output_text =~ s/^ /\&nbsp;/ms);
-        1 while ($output_text =~ s/^(\&nbsp;)+ /$1\&nbsp;/ms);
-
-        # Don't forget some people still use macs.
-        1 while ($output_text =~ s/\r\n/<br>/s);
-        1 while ($output_text =~ s/\r/<br>/s);
-        1 while ($output_text =~ s/\n/<br>/s);
-    }
-
-    # Change [center][/center] tags.
-    if ($do_html_formatting) {
-        if ($browser =~ /Opera/) {
-            while ($output_text =~ /\[center](.*?)\[\/center\]/is) {
-                my $buf = $1;
-                1 while ($buf =~ s/\n/<br>/s);
-                $output_text =~ s/\[center](.*?)\[\/center\]/<\/pre><center><code>$buf<\/code><\/center><pre>/is;
-            }
-        } else {
-            1 while ($output_text =~ s/\[center](.*?)\[\/center\]/<center>$1<\/center>/is);
-        }
-    } else {
-        while ($output_text =~ s/\[center](.*?)\[\/center\](.*)//si) {
-            foreach (split("\n", $1)) {
-                s/^\s*//g;
-                s/\s*$//g;
-                my $l = length($_);
-                my $centering = (($l < 80) ? ((80 - $l) / 2) : 0);
-                $output_text .= "\n" . (" " x $centering) . $_;
-            }
-            $output_text .= "\n" . $2;
-        }
-    }
+    $final .= process_tags($output_text);
+    $output_text = $final;
 
     if ($#title_array >= 0) {
         $title = $title_array[int(rand($#title_array + 1))];
@@ -1395,12 +1402,8 @@ sub do_fingering {
         }
     }
 
-    1 while ($output_text =~ s/\A(\r\n)+//s);  # Remove starting newlines.
-    1 while ($output_text =~ s/(\r\n)+\Z//s);  # Remove trailing newlines.
     1 while ($output_text =~ s/\A\n+//s);  # Remove starting newlines.
     1 while ($output_text =~ s/\n+\Z//s);  # Remove trailing newlines.
-    1 while ($output_text =~ s/\A\r+//s);  # Remove starting newlines.
-    1 while ($output_text =~ s/\r+\Z//s);  # Remove trailing newlines.
 
     output_start($user, $host);
     print("$output_text\n") if (not $block_output);
