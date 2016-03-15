@@ -685,7 +685,7 @@ sub output_start {
         my $summary = $metadata{'summary'};
         $twitter .= "<meta name='twitter:card' content='summary' />\n";
         $twitter .= "<meta name='twitter:site' content='\@$uname' />\n";
-        $twitter .= "<meta name='twitter:title content='$title' />\n";
+        $twitter .= "<meta name='twitter:title' content='$title' />\n";
         $twitter .= "<meta name='twitter:description' content='$summary' />\n";
     }
 
