@@ -107,6 +107,7 @@ Type:
            username varchar(32) not null,
            postdate datetime not null,
            text mediumtext character set utf8 COLLATE utf8_general_ci not null,
+           summary varchar(128) character set utf8 COLLATE utf8_general_ci not null default '',
            primary key (id)
          );
 
