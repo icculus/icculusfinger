@@ -319,14 +319,20 @@ sub update_planfile {
         $str =~ s/\s+\Z//;
 
         $summary = $str;
+        $summary =~ s/\A(.{1,80})\b.*\Z/$1/;	
+        $summary =~ s/\A(.{15,}?[.?!]).*\Z/$1/;  # gross.
     }
 
     1 while ($summary =~ s/\r\n/ /s);
     1 while ($summary =~ s/\r/ /s);
     1 while ($summary =~ s/\n/ /s);
-    if (length($summary) > 80) {
-        $summary =~ s/\A(.{15,}?[.?!])(.*?)\Z/$1/;  # gross.
-    }
+
+    if (length($summary) > 80) {   
+        $summary =~ s/\A(.{1,80})\b.*\Z/$1/;	
+        $summary =~ s/\A(.{15,}?[.?!]).*\Z/$1/;  # gross.
+    } 
+
+    #print("SUMMARY: $summary\n"); exit(0);
 
     $summary = $link->quote($summary);
 

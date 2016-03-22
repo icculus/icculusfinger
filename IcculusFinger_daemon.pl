@@ -1404,14 +1404,19 @@ sub do_fingering {
         $str =~ s/\A(.*?)[\r\n].*\Z/$1/s;
         $str =~ s/\A\s+//;
         $str =~ s/\s+\Z//;
+
         $metadata{'summary'} = $str;
+        $metadata{'summary'} =~ s/\A(.{1,80})\b.*\Z/$1/;
+        $metadata{'summary'} =~ s/\A(.{15,}?[.?!]).*\Z/$1/;  # gross.
     }
 
     1 while ($metadata{'summary'} =~ s/\r\n/ /s);
     1 while ($metadata{'summary'} =~ s/\r/ /s);
     1 while ($metadata{'summary'} =~ s/\n/ /s);
+
     if (length($metadata{'summary'}) > 80) {
-        $metadata{'summary'} =~ s/\A(.{15,}?[.?!])(.*?)\Z/$1/;  # gross.
+        $metadata{'summary'} =~ s/\A(.{1,80})\b.*\Z/$1/;
+        $metadata{'summary'} =~ s/\A(.{15,}?[.?!]).*\Z/$1/;  # gross.
     }
 
     if ($debug) {
