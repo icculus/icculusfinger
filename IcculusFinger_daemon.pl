@@ -685,9 +685,9 @@ sub output_start {
         my $summary = $metadata{'summary'};
         my $titlestr = $title;
         # !!! FIXME: we need a proper HTML encoder.
-        $uname = s/'/\\'/g;
-        $titlestr = s/'/\\'/g;
-        $summary = s/'/\\'/g;
+        $uname =~ s/'/\\'/g;
+        $titlestr =~ s/'/\\'/g;
+        $summary =~ s/'/\\'/g;
         $twitter .= "<meta name='twitter:card' content='summary' />\n";
         $twitter .= "<meta name='twitter:site' content='\@$uname' />\n";
         $twitter .= "<meta name='twitter:title' content='$titlestr' />\n";
