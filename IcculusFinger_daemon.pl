@@ -85,6 +85,8 @@
 #  2.1.26: Added Markdown support, removed <pre> tags and workarounds for it.
 #          A few other output fixes.
 #  2.1.27: Added metadata support for Twitter Cards and summaries.
+#  2.1.28: Added optional alternate URL syntax, use summaries in RSS feeds.
+#          Added Twitter card images.
 #-----------------------------------------------------------------------------
 
 # !!! TODO: If an [img] isn't in a link tag, make it link to the image.
@@ -703,15 +705,35 @@ sub output_start {
     if (defined $metadata{'twitter'}) {
         my $uname = $metadata{'twitter'};
         my $summary = $metadata{'summary'};
+        my $image = $metadata{'image'};
+        my $largeimage = $metadata{'large_image'};
         my $titlestr = $title;
+        my $cardtype = 'summary';
+        my $imageurl = undef;
+
         # !!! FIXME: we need a proper HTML encoder.
         $uname =~ s/'/&\#39/g;
         $titlestr =~ s/'/&\#39/g;
         $summary =~ s/'/&\#39/g;
-        $twitter .= "<meta name='twitter:card' content='summary' />\n";
+
+        if (defined $image) {
+            $image =~ s/'/&\#39/g;
+            $imageurl = $image;
+        }
+
+        if (defined $largeimage) {
+            $largeimage =~ s/'/&\#39/g;
+            $cardtype = 'summary_large_image';
+            $imageurl = $largeimage;
+        }
+
+        $twitter .= "<meta name='twitter:card' content='$cardtype' />\n";
         $twitter .= "<meta name='twitter:site' content='\@$uname' />\n";
         $twitter .= "<meta name='twitter:title' content='$titlestr' />\n";
         $twitter .= "<meta name='twitter:description' content='$summary' />\n";
+        if (defined $imageurl) {
+            $twitter .= "<meta name='twitter:image' content='$imageurl' />\n";
+        }
     }
 
     print <<__EOF__ if not $embed;
@@ -720,7 +742,7 @@ sub output_start {
   <head>
     <title> $title </title>
     $rssdigest
-    $twitter
+$twitter
 __EOF__
 
 	print "<link rel=\"stylesheet\" href=\"$style\"
