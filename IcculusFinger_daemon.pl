@@ -939,7 +939,7 @@ sub output_oneuser_rss {
     return($err) if defined $err;
 
     my $u = $link->quote($user);
-    my $sql = "select postdate, text from $dbtable_archive where username=$u" .
+    my $sql = "select postdate, text, summary from $dbtable_archive where username=$u" .
               " order by postdate desc limit $oneuser_rss_items";
     my $sth = $link->prepare($sql);
     if (not $sth->execute()) {
@@ -965,6 +965,11 @@ sub output_oneuser_rss {
         $wanted_section = undef;   # global that gets set in do_fingering() and elsewhere...
         $output_text = $row[1];
 
+        my $summary = $row[2];
+        if ($summary eq '') {
+            $summary = ".plan update from $user, $dateandtime";
+        }
+
         # Might need to add this back in someday...
         #if (length($output_text) >= 5*1024) {
         #    $output_text = substr($row[1],0,5*1024) . " ...\n";
@@ -987,7 +992,7 @@ sub output_oneuser_rss {
         $href =~ s/\&/&amp;/g;
         $rdfitems .= "        <rdf:li rdf:resource=\"$href\" />\n";
         $digestitems .= "  <item rdf:about=\"$href\">\n";
-        $digestitems .= "    <title>.plan update from $user, $dateandtime</title>\n";
+        $digestitems .= "    <title>$summary</title>\n";
         $digestitems .= "    <link>$href</link>\n";
         $digestitems .= "    <pubDate>$itempubdate</pubDate>\n";
         $digestitems .= "    <description>$output_text</description>\n";
