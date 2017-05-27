@@ -115,7 +115,10 @@ my $host = 'icculus.org';
 
 # This is the URL for fingering accounts, for when we need to generate
 #  URLs. "$url?user=$user&section=sectionname".
-my $base_url = 'https://icculus.org/cgi-bin/finger/finger.pl';
+my $base_url = 'https://icculus.org/finger';
+
+# If 0, URLs will be $base_url?user=bob, if 1: $base_url/bob
+my $new_url_style = 1;
 
 # The processes path is replaced with this string, for security reasons, and
 #  to satisfy the requirements of Taint mode. Make this as simple as possible.
@@ -548,6 +551,22 @@ sub hashplans {
     return(%retval);
 }
 
+sub userurl {
+    my $user = shift;
+    my $args = shift;
+    my $url;
+    if ($new_url_style) {
+        $url = "$base_url/$user";
+        if (defined($args)) {
+            $url .= "?$args";
+        }
+    } else {
+        $url = "$base_url?user=$user";
+        if (defined($args)) {
+            $url .= "&$args";
+        }
+    }
+}
 
 sub do_digest {
     return if not defined $digest_filename;
@@ -571,9 +590,9 @@ sub do_digest {
     foreach (reverse sort keys %plansdates) {
         my $user = $plansdates{$_};
         my $modtime = get_minimal_sqldate($_);
-        my $href = "href=\"$base_url?user=$user\"";
+        my $href = userurl($user);
         print DIGESTH " <tr>\n";
-        print DIGESTH "  <td align=\"right\"><a $href>$user</a></td>\n";
+        print DIGESTH "  <td align=\"right\"><a href='$href'>$user</a></td>\n";
         print DIGESTH "  <td>$modtime</td>\n";
         print DIGESTH " </tr>\n";
 
@@ -614,7 +633,7 @@ sub do_rss_digest {
         my $user = $plansdates{$_};
         my $modtime = get_minimal_sqldate($_);
         my $itempubdate = pubdate(localtime($_));
-        my $href = "$base_url?user=$user";
+        my $href = userurl($user);
         $rdfitems .= "        <rdf:li rdf:resource=\"$href\" />\n";
         $digestitems .= "  <item rdf:about=\"$href\">\n";
         $digestitems .= "    <title>$user - $modtime</title>\n";
@@ -675,7 +694,8 @@ sub output_start {
 
     my $rssdigest = '';
     if ((defined $digest_rss_title) and (defined $digest_rss_about)) {
-        $rssdigest = "<link rel=\"alternate\" title=\"Finger updates from $user\@$host\" href=\"$base_url?user=$user&rss=1\" type=\"application/rss+xml\" />    \n" .
+        my $rssurl = userurl($user, 'rss=1');
+        $rssdigest = "<link rel=\"alternate\" title=\"Finger updates from $user\@$host\" href=\"$rssurl\" type=\"application/rss+xml\" />\n    " .
                      "<link rel=\"alternate\" title=\"$digest_rss_title\" href=\"$digest_rss_about\" type=\"application/rss+xml\" />\n";
     }
 
@@ -741,7 +761,9 @@ sub output_ending {
 
     my $archivestext = '';
     if (defined $user) {
-        $archivestext = ".plan archives for this user are <a href='$base_url?user=$user&listarchives=1'>here</a> (RSS <a href='$base_url?user=$user&rss=1'>here</a>).<br/>";
+        my $archivesurl = userurl($user, 'listarchives=1');
+        my $rssurl = userurl($user, 'rss=1');
+        $archivestext = ".plan archives for this user are <a href='$archivesurl'>here</a> (RSS <a href='$rssurl'>here</a>).<br/>";
     }
 
         print <<__EOF__;
@@ -889,9 +911,9 @@ sub load_archive_list {
         my ($d, $t) = $dt =~ /(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d)/;
         $t =~ s/(..):(..):(..)/$1-$2-$3/;
         if ($do_html_formatting) {
-            my $url = "$base_url?user=$user&date=$d&time=$t";
+            my $archivelink = userurl($user, "date=$d&time=$t");
             $summary = " -- $summary" if ($summary ne '');
-            $output_text .= "  \[link=\"$url\"\]$dt\[/link\]$summary\n";
+            $output_text .= "  \[link=\"$archivelink\"\]$dt\[/link\]$summary\n";
         } else {
             $summary = " # $summary" if ($summary ne '');
             $output_text .= "  finger '$user?date=$d&time=$t\@$host'$summary\n";
@@ -925,7 +947,9 @@ sub output_oneuser_rss {
         return "can't execute the query: $sth->errstr";
     }
 
-    my $oneuser_rss_url = "$base_url?user=$user&amp;rss=1";
+    my $oneuser_rss_url = userurl($user, 'rss=1');
+    $oneuser_rss_url =~ s/\&/&amp;/g;
+
     my $oneuser_rss_title = "Finger updates from $user\@$host";
     my $pubDate = pubdate(localtime(time()));
     my $rdfitems = "\n";
@@ -959,7 +983,8 @@ sub output_oneuser_rss {
         my @pubtime = localtime($unixtime);
         $pubtime[2] = $hour;  # workaround to make times match. Probably not the right way.
         my $itempubdate = pubdate(@pubtime);
-        my $href = "$base_url?user=$user&amp;date=$d&amp;time=$hour-$min-$sec";
+        my $href = userurl($user, "date=$d&time=$hour-$min-$sec");
+        $href =~ s/\&/&amp;/g;
         $rdfitems .= "        <rdf:li rdf:resource=\"$href\" />\n";
         $digestitems .= "  <item rdf:about=\"$href\">\n";
         $digestitems .= "    <title>.plan update from $user, $dateandtime</title>\n";
@@ -974,6 +999,7 @@ sub output_oneuser_rss {
     $sth->finish();
     $link->disconnect();
 
+    my $userlink = userurl($user);
     print <<__EOF__;
 <?xml version="1.0" encoding="utf-8"?>
 
@@ -983,7 +1009,7 @@ sub output_oneuser_rss {
 
   <channel rdf:about="$oneuser_rss_url">
     <title>$oneuser_rss_title</title>
-    <link>$base_url?user=$user</link>
+    <link>$userlink</link>
     <description>$digest_rss_title</description>
     <image rdf:resource="$digest_rss_image" />
     <pubDate>$pubDate</pubDate>
@@ -1336,7 +1362,7 @@ sub do_fingering {
         $output_text = "Available sections:\n";
         if ($do_html_formatting) {
             foreach (@sectionlist) {
-                my $url = "$base_url?user=$user&section=$_";
+                my $url = userurl($user, "section=$_");
                 $output_text .= "  \[link=\"$url\"\]$_\[/link\]\n";
             }
         } else {
