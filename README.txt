@@ -165,7 +165,7 @@ is significant when it does, but there's also a continually updated TODO
 section, which isn't important when it changes. the [noarchive] tag covers the
 TODO, so archiving won't happen if the only changes are in that section.
 
-Questions and comments to icculus@clutteredmind.org. Good luck.
+Questions and comments to icculus@icculus.org. Good luck.
 
 # end of INSTALL ...
 
