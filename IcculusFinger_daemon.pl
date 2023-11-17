@@ -1110,7 +1110,7 @@ sub load_archive {
     if (not @row) {
         $output_text = '';  # will use $no_report_string.
     } else {
-        $row[1] =~ s/(\A.{0, $max_plan_size}).*\Z/$1/s;
+        $row[1] =~ s/(\A.\{0, $max_plan_size}).*\Z/$1/s;
         $archive_date = $row[0];
         $output_text = $row[1];
     }
